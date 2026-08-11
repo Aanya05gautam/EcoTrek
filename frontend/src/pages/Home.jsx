@@ -64,7 +64,7 @@ export default function Home() {
           <div className="text-center max-w-3xl mx-auto mb-20">
             <h2 className="text-4xl font-extrabold mb-6 tracking-tight">The Decentralized Solution</h2>
             <p className="text-lg text-emerald-800/80 font-medium">
-              We replace inefficient manual waste collection with a data-driven municipal engine. By granting citizens 4 robust tools, we drastically decrease processing overhead and eradicate localized dumping.
+              We replace inefficient manual waste collection with a data-driven municipal engine. By granting citizens 4 robust tools, we drastically decrease processing overhead and eradicate localized dumping !
             </p>
           </div>
 
