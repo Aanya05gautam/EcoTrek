@@ -1,0 +1,1 @@
+import {Router} from 'express'; import {auth} from '../middleware/auth.js'; import {getQuiz,submitQuiz} from '../controllers/trainingController.js'; const r=Router();r.get('/',auth,getQuiz);r.post('/submit',auth,submitQuiz);export default r;
