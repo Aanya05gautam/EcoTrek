@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Leaf, Camera, MapPin, Truck, BookOpen, LogIn, LogOut, ChevronRight, Menu, X, ShieldAlert } from 'lucide-react';
+import { Leaf, Home, Camera, MapPin, Truck, BookOpen, LogIn, LogOut, ChevronRight, Menu, X, ShieldAlert } from 'lucide-react';
 
 export default function Navbar() {
   const { user, logout } = useAuth();
@@ -16,6 +16,9 @@ export default function Navbar() {
 
   const NavLinks = ({ mobile = false }) => (
     <>
+      <Link onClick={() => setIsOpen(false)} to="/" className={`flex items-center gap-2 rounded-xl text-emerald-900 font-bold transition-colors ${mobile ? 'px-4 py-3 bg-emerald-50 text-base' : 'px-3 py-2 text-sm hover:bg-emerald-50 hover:text-emerald-700'}`}>
+        <Home size={mobile ? 20 : 16} /> Home
+      </Link>
       <Link onClick={() => setIsOpen(false)} to="/identify" className={`flex items-center gap-2 rounded-xl text-emerald-900 font-bold transition-colors ${mobile ? 'px-4 py-3 bg-emerald-50 text-base' : 'px-3 py-2 text-sm hover:bg-emerald-50 hover:text-emerald-700'}`}>
         <Camera size={mobile ? 20 : 16} /> Identify
       </Link>
