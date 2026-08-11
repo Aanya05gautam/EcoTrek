@@ -1,0 +1,5 @@
+import crypto from 'crypto'; import Pickup from '../models/Pickup.js'; import {memoryStore} from '../services/store.js';
+const mongo=()=>Pickup.db?.readyState===1;
+export async function createPickup(req,res){const {wasteType,estimatedWeight,address,slotDate}=req.body;const d={user:req.user.id,wasteType,estimatedWeight:Number(estimatedWeight),address,slotDate,status:'Requested'};if(mongo())return res.status(201).json(await Pickup.create(d));const p={...d,id:crypto.randomUUID(),createdAt:new Date().toISOString()};memoryStore.pickups.push(p);res.status(201).json(p);}
+export async function listPickups(req,res){if(mongo())return res.json(await Pickup.find().sort({slotDate:1}));res.json(memoryStore.pickups);}
+export async function updatePickup(req,res){const {status}=req.body;if(mongo())return res.json(await Pickup.findByIdAndUpdate(req.params.id,{status},{new:true}));const p=memoryStore.pickups.find(x=>x.id===req.params.id);if(!p)return res.status(404).json({message:'Pickup not found'});p.status=status;res.json(p);}

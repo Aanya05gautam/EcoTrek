@@ -1,0 +1,1 @@
+import {Router} from 'express'; import upload from '../middleware/upload.js'; import {auth,adminOnly} from '../middleware/auth.js'; import {createReport,listReports,updateReport} from '../controllers/reportController.js'; const r=Router();r.get('/',auth,listReports);r.post('/',auth,upload.single('image'),createReport);r.patch('/:id',auth,adminOnly,updateReport);export default r;
