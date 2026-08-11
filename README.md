@@ -1,56 +1,136 @@
-# EcoTrek — Working MERN Prototype
+# 🌱 EcoTrek – Smart Waste Management System
 
-EcoTrek is an AI-assisted smart municipal waste-management and citizen-engagement prototype aligned with SDG 11/12 and SIH-25060.
+EcoTrek is a smart and sustainable waste management solution designed to improve waste segregation, collection, monitoring, and recycling. The platform uses modern web technologies and intelligent features to help create cleaner, greener, and more sustainable communities.
 
-## Modules included
-- React + Vite citizen UI
-- JWT/Bcrypt authentication
-- AI waste identification endpoint (prototype classifier, AI-ready interface)
-- Geo-tagged waste reporting with image upload
-- Leaflet/OpenStreetMap incident map
-- Doorstep pickup scheduling and status flow
-- Training quiz + Eco-Points
-- Admin dashboard for reports and pickups
-- MongoDB/Mongoose models
-- Automatic in-memory fallback if MongoDB is not available, so the demo can run without a database
+## 🚀 Features
 
-## Run locally
-Requirements: Node.js 18+.
+* ♻️ Smart waste segregation and classification
+* 🗑️ Waste collection and monitoring
+* 📍 Waste reporting and tracking
+* 📊 Admin dashboard for waste management
+* 🌱 Promotes recycling and sustainable practices
+* 👥 Encourages citizen participation
+* 📈 Data-driven monitoring and management
 
-### 1. Backend
+## 🛠️ Tech Stack
+
+**Frontend**
+
+* React.js
+* JavaScript
+* HTML5
+* CSS3
+
+**Backend**
+
+* Node.js
+* Express.js
+
+**Database**
+
+* MongoDB
+
+**Other Technologies**
+
+* REST APIs
+* Git & GitHub
+* Machine Learning / AI
+
+## 🎯 Objectives
+
+* Improve waste segregation and disposal.
+* Reduce waste accumulation and overflowing bins.
+* Improve the efficiency of waste collection.
+* Encourage recycling and responsible waste disposal.
+* Support sustainable and cleaner urban communities.
+
+## 🌍 SDG Alignment
+
+EcoTrek supports **United Nations Sustainable Development Goal 11 (SDG 11) – Sustainable Cities and Communities** by promoting efficient waste management and environmentally responsible urban development.
+
+## 📂 Project Structure
+
+```text
+EcoTrek/
+├── client/          # Frontend
+├── server/          # Backend
+├── models/          # Database models
+├── routes/          # API routes
+├── controllers/     # Backend controllers
+├── public/           # Public assets
+├── README.md
+└── package.json
+```
+
+> The project structure may change as development progresses.
+
+## ⚙️ Installation & Setup
+
+### 1. Clone the repository
+
 ```bash
-cd backend
-cp .env.example .env
+git clone https://github.com/your-username/EcoTrek.git
+cd EcoTrek
+```
+
+### 2. Install dependencies
+
+For the frontend:
+
+```bash
+cd client
 npm install
+```
+
+For the backend:
+
+```bash
+cd ../server
+npm install
+```
+
+### 3. Configure environment variables
+
+Create a `.env` file in the backend directory and add the required configuration:
+
+```env
+PORT=5000
+MONGO_URI=your_mongodb_connection_string
+```
+
+### 4. Run the project
+
+Start the backend:
+
+```bash
+npm start
+```
+
+Start the frontend:
+
+```bash
+cd client
 npm run dev
 ```
-API: http://localhost:5000/api/health
 
-### 2. Frontend
-Open another terminal:
-```bash
-cd frontend
-cp .env.example .env
-npm install
-npm run dev
-```
-Open the Vite URL shown in terminal (normally http://localhost:5173).
+## 🔮 Future Scope
 
-## MongoDB
-For persistent storage, start MongoDB locally or use MongoDB Atlas and put the connection string in `backend/.env` as `MONGO_URI`.
+* IoT-enabled smart bins
+* AI-based waste classification
+* GPS-based waste collection tracking
+* Optimized garbage collection routes
+* Mobile application
+* Reward system for responsible waste disposal
+* Advanced analytics and reporting
+* Integration with municipal authorities
 
-## Admin
-Register a user normally. When using MongoDB, change that user's `role` from `Citizen` to `Admin` in the `users` collection, then log in again. The Admin page becomes available.
+## 👩‍💻 Project
 
-For a quick prototype demonstration without MongoDB, the app uses an in-memory store. Restarting the backend clears demo data.
+**EcoTrek**
+Smart Waste Management Solution
+Developed as a **Minor Project / Smart India Hackathon (SIH) initiative**.
 
-## AI note
-The endpoint is intentionally separated as `/api/ai/identify`. The current prototype uses a deterministic item-keyword classifier so the full workflow works without downloading a large ML model. For the final research-grade system, replace `controllers/aiController.js` with a TensorFlow.js/MobileNet/custom waste-classification model while keeping the same API response shape.
+## 📄 License
 
-## Suggested guide demo flow
-1. Register/login.
-2. Identify waste with an image whose filename contains an item keyword such as `plastic-bottle.jpg`, `battery.jpg`, `banana.jpg`, or `laptop.jpg`.
-3. Submit a geo-tagged report and click the map to select coordinates.
-4. Schedule a pickup.
-5. Complete the segregation quiz and show Eco-Points.
-6. Promote a user to Admin in MongoDB and demonstrate report/pickup status management.
+This project is developed for academic and educational purposes.
+
