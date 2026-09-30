@@ -7,8 +7,10 @@ import { MapPin, Navigation, Info, ExternalLink } from 'lucide-react';
 export default function Reports() {
   const { user, updateEcoPoints } = useAuth();
   const [reports, setReports] = useState([]);
-  const [form, setForm] = useState({ title: '', description: '', address: '', lat: '28.6139', lng: '77.2090', aiCategory: 'Unknown', aiConfidence: 0 });
+  const [form, setForm] = useState({ title: '', description: '', address: '', lat: '28.6139', lng: '77.2090', aiCategory: 'Unknown', aiConfidence: 0, reportType: 'Outdoor/Public', quantity: 'Medium', severity: 'Medium' });
   const [file, setFile] = useState(null);
+  const [analysis, setAnalysis] = useState(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
   const [pos, setPos] = useState(null);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
@@ -16,8 +18,8 @@ export default function Reports() {
   const load = () => api('/reports').then(res => Array.isArray(res) && setReports(res)).catch(() => {});
   
   useEffect(() => {
-    if (user) load();
-  }, [user]);
+    load();
+  }, []);
 
   const detectLocation = () => {
     if (navigator.geolocation) {
@@ -42,9 +44,36 @@ export default function Reports() {
     }
   };
 
+  const handleFileChange = async (selectedFile) => {
+    setFile(selectedFile);
+    setErr('');
+
+    if (!selectedFile) {
+      setAnalysis(null);
+      return;
+    }
+
+    setAnalysisLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append('image', selectedFile);
+      const result = await api('/ai/identify', { method: 'POST', body: fd });
+      setAnalysis(result);
+      setForm(prev => ({
+        ...prev,
+        aiCategory: result.category || 'Unknown',
+        aiConfidence: Number(result.confidence) || 0
+      }));
+    } catch (classificationError) {
+      setAnalysis(null);
+      console.error('Image classification preview failed:', classificationError);
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
   const submit = async (e) => {
     e.preventDefault();
-    if (!user) return setErr('Please login first.');
     setLoading(true);
     const fd = new FormData();
     Object.entries({ ...form, ...(pos || {}) }).forEach(([k, v]) => fd.append(k, v));
@@ -61,17 +90,6 @@ export default function Reports() {
       setLoading(false);
     }
   };
-
-  if (!user) {
-    return (
-      <div className="max-w-4xl mx-auto px-4 py-20">
-        <div className="bg-white/80 backdrop-blur-md rounded-3xl p-10 text-center border border-emerald-100 shadow-xl">
-          <h2 className="text-3xl font-extrabold text-emerald-950 mb-4">Central Login Required</h2>
-          <p className="text-emerald-700/80 font-semibold text-lg">Sign in to authenticate geospatial plotting tokens.</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-12">
@@ -98,7 +116,7 @@ export default function Reports() {
               <div className="h-12 w-12 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-600 shadow-sm border border-emerald-200">
                 <MapPin size={24} />
               </div>
-              <h2 className="text-3xl font-extrabold text-emerald-950">Add Hotspot</h2>
+              <h2 className="text-3xl font-extrabold text-emerald-950">{form.reportType === 'Household' ? 'Household Waste Report' : 'Outdoor Waste Hotspot'}</h2>
             </div>
             
             {err && <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-5 py-4 rounded-xl font-bold text-sm shadow-sm flex items-center gap-2">⚠️ {err}</div>}
@@ -113,27 +131,64 @@ export default function Reports() {
                 <label className="block text-emerald-950 font-extrabold mb-2 text-sm uppercase tracking-wider">Status Details</label>
                 <textarea rows="3" className="w-full bg-slate-50 border border-emerald-100 rounded-xl px-5 py-4 text-emerald-950 focus:bg-white focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all font-semibold shadow-sm" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Provide scene context..." required />
               </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-emerald-950 font-extrabold mb-2 text-sm uppercase tracking-wider">Prediction Tag</label>
-                  <select className="w-full bg-slate-50 border border-emerald-100 rounded-xl px-4 py-4 text-emerald-950 focus:bg-white focus:outline-none focus:border-emerald-500 transition-all font-semibold shadow-sm appearance-none" value={form.aiCategory} onChange={e => setForm({ ...form, aiCategory: e.target.value })}>
-                    <option>Unknown</option>
-                    <option>Wet/Organic</option>
-                    <option>Dry/Recyclable</option>
-                    <option>Hazardous</option>
-                    <option>E-Waste</option>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <label className="text-emerald-950 font-extrabold text-xs uppercase tracking-wider">
+                  Report mode
+                  <select className="mt-2 w-full bg-slate-50 border border-emerald-100 rounded-xl px-3 py-3 text-emerald-950 font-semibold" value={form.reportType} onChange={e => setForm({ ...form, reportType: e.target.value })}>
+                    <option>Outdoor/Public</option>
+                    <option>Household</option>
                   </select>
-                </div>
+                </label>
+                <label className="text-emerald-950 font-extrabold text-xs uppercase tracking-wider">
+                  Quantity
+                  <select className="mt-2 w-full bg-slate-50 border border-emerald-100 rounded-xl px-3 py-3 text-emerald-950 font-semibold" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })}>
+                    <option>Low</option>
+                    <option>Medium</option>
+                    <option>High</option>
+                  </select>
+                </label>
+                <label className="text-emerald-950 font-extrabold text-xs uppercase tracking-wider">
+                  Severity
+                  <select className="mt-2 w-full bg-slate-50 border border-emerald-100 rounded-xl px-3 py-3 text-emerald-950 font-semibold" value={form.severity} onChange={e => setForm({ ...form, severity: e.target.value })}>
+                    <option>Low</option>
+                    <option>Medium</option>
+                    <option>High</option>
+                    <option>Critical</option>
+                  </select>
+                </label>
+              </div>
+              
+              <div className="grid grid-cols-1 gap-4">
                 <div>
                   <label className="block text-emerald-950 font-extrabold mb-2 text-sm uppercase tracking-wider">Attach Photo</label>
                   <div className="relative w-full">
-                    <input type="file" accept="image/*" className="absolute opacity-0 inset-0 cursor-pointer w-full h-full z-10" onChange={e => setFile(e.target.files[0])} />
+                    <input type="file" accept="image/*" className="absolute opacity-0 inset-0 cursor-pointer w-full h-full z-10" onChange={e => handleFileChange(e.target.files?.[0] || null)} />
                     <div className="w-full bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-4 text-emerald-700 font-bold text-center truncate hover:bg-emerald-100 transition-colors shadow-sm">
                       {file ? file.name : 'Upload file...'}
                     </div>
                   </div>
                 </div>
+              </div>
+
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 shadow-sm">
+                <div className="flex items-center justify-between gap-4 mb-3">
+                  <div className="text-emerald-950 font-extrabold text-sm uppercase tracking-wider">AI Preview</div>
+                  <span className="text-xs font-bold text-emerald-700 bg-white border border-emerald-200 px-3 py-1 rounded-full">
+                    {analysisLoading ? 'Analyzing...' : 'Auto-classified'}
+                  </span>
+                </div>
+                {analysis ? (
+                  <div className="space-y-2 text-sm font-semibold text-emerald-900">
+                    <div>Category: <span className="font-extrabold">{analysis.category}</span></div>
+                    <div>Confidence: <span className="font-extrabold">{analysis.confidence}%</span></div>
+                    {analysis.guidance && <div className="text-emerald-700">{analysis.guidance}</div>}
+                  </div>
+                ) : (
+                  <div className="text-sm font-semibold text-emerald-700/80">
+                    Upload a photo to preview the model’s prediction before submitting the report.
+                  </div>
+                )}
               </div>
               
               <div>

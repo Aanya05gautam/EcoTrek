@@ -12,6 +12,7 @@ import Training from "./pages/Training";
 import Admin from "./pages/Admin";
 import Login from "./pages/Login";
 import Driver from "./pages/Driver";
+import AdminLogin from "./pages/AdminLogin";
 
 function App() {
   return (
@@ -27,6 +28,7 @@ function App() {
           <Route path="/training" element={<Training />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/driver" element={<Driver />} />
         </Routes>
       </main>

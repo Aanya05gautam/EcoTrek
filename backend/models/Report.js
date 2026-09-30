@@ -5,12 +5,16 @@ const reportSchema = new mongoose.Schema({
   title: { type: String, required: true },
   description: { type: String, required: true },
   imageUrl: String,
-  aiCategory: { 
-    type: String, 
-    enum: ['Wet/Organic', 'Dry/Recyclable', 'Hazardous', 'E-Waste', 'Unknown'], 
-    default: 'Unknown' 
+  aiCategory: {
+    type: String,
+    enum: ['Hazardous', 'Non-Recyclable', 'Organic', 'Recyclable', 'Wet/Organic', 'Dry/Recyclable', 'E-Waste', 'Unknown'],
+    default: 'Unknown'
   },
   aiConfidence: { type: Number, default: 0 },
+  reportType: { type: String, enum: ['Household', 'Outdoor/Public'], default: 'Outdoor/Public' },
+  quantity: { type: String, enum: ['Low', 'Medium', 'High'], default: 'Medium' },
+  severity: { type: String, enum: ['Low', 'Medium', 'High', 'Critical'], default: 'Medium' },
+  priority: { type: String, enum: ['Low', 'Medium', 'High', 'Critical'], default: 'Low' },
   location: {
     type: { type: String, enum: ['Point'], default: 'Point' },
     coordinates: { type: [Number] } // [longitude, latitude]

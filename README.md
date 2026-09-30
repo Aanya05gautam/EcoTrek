@@ -1,6 +1,6 @@
 # 🌱 EcoTrek – Smart Waste Management System
 
-EcoTrek is a smart and sustainable waste management solution designed to improve waste segregation, collection, monitoring, and recycling. The platform uses modern web technologies and intelligent features to help create cleaner, greener, and more sustainable communities.
+EcoTrek is a smart and sustainable waste management solution designed to improve waste segregation, collection, monitoring, and recycling. The platform uses modern web technologies and a local Keras image-classification service to help create cleaner, greener, and more sustainable communities.
 
 ## 🚀 Features
 
@@ -25,6 +25,12 @@ EcoTrek is a smart and sustainable waste management solution designed to improve
 
 * Node.js
 * Express.js
+
+**ML Service**
+
+* Python
+* FastAPI
+* TensorFlow / Keras
 
 **Database**
 
@@ -52,14 +58,11 @@ EcoTrek supports **United Nations Sustainable Development Goal 11 (SDG 11) – S
 
 ```text
 EcoTrek/
-├── client/          # Frontend
-├── server/          # Backend
-├── models/          # Database models
-├── routes/          # API routes
-├── controllers/     # Backend controllers
-├── public/           # Public assets
+├── backend/         # Express API and report/auth logic
+├── frontend/        # React/Vite client
+├── ml-service/      # FastAPI Keras inference server
 ├── README.md
-└── package.json
+└── start-demo.txt
 ```
 
 > The project structure may change as development progresses.
@@ -78,15 +81,22 @@ cd EcoTrek
 For the frontend:
 
 ```bash
-cd client
+cd frontend
 npm install
 ```
 
 For the backend:
 
 ```bash
-cd ../server
+cd ../backend
 npm install
+```
+
+For the ML service:
+
+```bash
+cd ../ml-service
+pip install -r requirements.txt
 ```
 
 ### 3. Configure environment variables
@@ -96,22 +106,40 @@ Create a `.env` file in the backend directory and add the required configuration
 ```env
 PORT=5000
 MONGO_URI=your_mongodb_connection_string
+CLIENT_URL=http://localhost:5173
+ML_SERVICE_URL=http://127.0.0.1:8000
 ```
 
 ### 4. Run the project
 
+Start the ML service:
+
+```bash
+cd ml-service
+uvicorn app:app --reload --port 8000
+```
+
 Start the backend:
 
 ```bash
+cd backend
 npm start
 ```
 
 Start the frontend:
 
 ```bash
-cd client
+cd frontend
 npm run dev
 ```
+
+### 5. Image classification flow
+
+1. Upload a waste image in the Identify or Reports page.
+2. The frontend sends the image to `backend /api/ai/identify`.
+3. The Node backend forwards the image to the local FastAPI Keras service.
+4. The ML service returns `category`, `confidence`, `guidance`, and `note`.
+5. Reports store the predicted label in the report record automatically.
 
 ## 🔮 Future Scope
 

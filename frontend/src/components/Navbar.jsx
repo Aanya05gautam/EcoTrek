@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Leaf, Home, Camera, MapPin, Truck, BookOpen, LogIn, LogOut, ChevronRight, Menu, X, ShieldAlert } from 'lucide-react';
+import { Leaf, Home, Camera, MapPin, Truck, BookOpen, LogOut, Menu, X, ShieldAlert } from 'lucide-react';
 
 export default function Navbar() {
   const { user, logout } = useAuth();
@@ -34,6 +34,9 @@ export default function Navbar() {
       <Link onClick={() => setIsOpen(false)} to="/driver" className={`flex items-center gap-2 rounded-xl text-emerald-900 font-bold transition-colors ${mobile ? 'px-4 py-3 bg-emerald-50 text-base' : 'px-3 py-2 text-sm hover:bg-emerald-50 hover:text-emerald-700'}`}>
         <ShieldAlert size={mobile ? 20 : 16} className="text-red-500" /> Fleet Portal
       </Link>
+      <Link onClick={() => setIsOpen(false)} to={user?.role === 'Admin' ? '/admin' : '/admin/login'} className={`flex items-center gap-2 rounded-xl text-emerald-900 font-bold transition-colors ${mobile ? 'px-4 py-3 bg-emerald-50 text-base' : 'px-3 py-2 text-sm hover:bg-emerald-50 hover:text-emerald-700'}`}>
+        <ShieldAlert size={mobile ? 20 : 16} className="text-emerald-600" /> Admin Portal
+      </Link>
     </>
   );
 
@@ -60,21 +63,13 @@ export default function Navbar() {
           {/* Auth Button Desktop & Mobile Toggle */}
           <div className="flex items-center gap-4">
             <div className="hidden md:flex items-center">
-              {user ? (
+              {user && (
                 <button 
                   onClick={handleLogout} 
                   className="flex items-center gap-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 px-5 py-2.5 rounded-xl font-bold transition-all shadow-sm border border-emerald-100 uppercase tracking-widest text-xs"
                 >
                   Log Out <LogOut size={16} />
                 </button>
-              ) : (
-                <Link 
-                  to="/login" 
-                  className="group flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-bold transition-all shadow-[0_4px_15px_rgba(16,185,129,0.3)] hover:-translate-y-0.5 tracking-wide"
-                >
-                  <LogIn size={16} /> Log In
-                  <ChevronRight size={16} className="opacity-50 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
-                </Link>
               )}
             </div>
             
@@ -97,21 +92,13 @@ export default function Navbar() {
           </div>
           
           <div className="border-t border-emerald-100 pt-6 mb-2 flex justify-center md:hidden">
-             {user ? (
+             {user && (
                 <button 
                   onClick={handleLogout} 
                   className="w-full flex items-center justify-center gap-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 px-5 py-4 rounded-xl font-bold transition-all shadow-sm border border-emerald-100 uppercase tracking-widest text-sm"
                 >
                   Log Out <LogOut size={18} />
                 </button>
-              ) : (
-                <Link 
-                  onClick={() => setIsOpen(false)}
-                  to="/login" 
-                  className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white px-6 py-4 rounded-xl font-bold shadow-lg text-lg"
-                >
-                  <LogIn size={20} /> Log In
-                </Link>
               )}
           </div>
         </div>

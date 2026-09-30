@@ -39,21 +39,47 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 divide-x divide-emerald-800/50 shadow-sm border border-emerald-800/50 rounded-3xl bg-emerald-950/50 p-8 backdrop-blur-sm">
             <div className="text-center px-4">
-              <div className="text-4xl font-extrabold text-emerald-400 mb-1">2.4M</div>
-              <div className="text-emerald-200/70 font-semibold text-sm uppercase tracking-wide">Tons Diverted</div>
+              <div className="text-4xl font-extrabold text-emerald-400 mb-1">2,884</div>
+              <div className="text-emerald-200/70 font-semibold text-sm uppercase tracking-wide">Training Images</div>
             </div>
             <div className="text-center px-4">
-              <div className="text-4xl font-extrabold text-emerald-400 mb-1">15k+</div>
-              <div className="text-emerald-200/70 font-semibold text-sm uppercase tracking-wide">Active Nodes</div>
+              <div className="text-4xl font-extrabold text-emerald-400 mb-1">4</div>
+              <div className="text-emerald-200/70 font-semibold text-sm uppercase tracking-wide">Waste Classes</div>
             </div>
             <div className="text-center px-4">
-              <div className="text-4xl font-extrabold text-emerald-400 mb-1">98%</div>
-              <div className="text-emerald-200/70 font-semibold text-sm uppercase tracking-wide">AI Accuracy</div>
+              <div className="text-4xl font-extrabold text-emerald-400 mb-1">74.88%</div>
+              <div className="text-emerald-200/70 font-semibold text-sm uppercase tracking-wide">Test Accuracy</div>
             </div>
             <div className="text-center px-4">
-              <div className="text-4xl font-extrabold text-emerald-400 mb-1">11</div>
-              <div className="text-emerald-200/70 font-semibold text-sm uppercase tracking-wide">Cities Adopted</div>
+              <div className="text-4xl font-extrabold text-emerald-400 mb-1">3</div>
+              <div className="text-emerald-200/70 font-semibold text-sm uppercase tracking-wide">Live AI Phases</div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="py-16 bg-white border-b border-emerald-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
+            <div>
+              <p className="text-emerald-600 font-extrabold text-xs uppercase tracking-[0.2em]">EcoTrek workflow</p>
+              <h2 className="text-3xl font-extrabold text-emerald-950 mt-2">From image to municipal action</h2>
+            </div>
+            <p className="text-emerald-800/70 font-medium max-w-xl">The implemented household classifier feeds citizen reports, hotspot prioritization, and capacity-aware fleet routing.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            {[
+              ['01', 'Classify', '/identify'],
+              ['02', 'Report + GPS', '/reports'],
+              ['03', 'Cluster hotspots', '/admin'],
+              ['04', 'Optimize route', '/driver'],
+              ['05', 'Track resolution', '/pickups'],
+            ].map(([number, label, href]) => (
+              <Link key={number} to={href} className="group border border-emerald-100 bg-emerald-50/60 rounded-2xl p-5 hover:border-emerald-400 hover:bg-emerald-100 transition-colors">
+                <span className="text-xs font-extrabold text-emerald-500">{number}</span>
+                <div className="font-extrabold text-emerald-950 mt-3 group-hover:text-emerald-700">{label}</div>
+              </Link>
+            ))}
           </div>
         </div>
       </section>
@@ -181,8 +207,8 @@ export default function Home() {
           <p className="text-emerald-100/80 text-xl mx-auto leading-relaxed mb-10 font-medium max-w-2xl">
             Authenticate your citizen node today and begin your impact on global sustainability protocols.
           </p>
-          <Link to="/login" className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 px-8 py-4 rounded-xl text-white font-extrabold text-lg shadow-[0_4px_20px_rgba(16,185,129,0.4)] transition transform hover:-translate-y-0.5">
-            Initialize Access <ArrowRight size={20} />
+          <Link to="/identify" className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 px-8 py-4 rounded-xl text-white font-extrabold text-lg shadow-[0_4px_20px_rgba(16,185,129,0.4)] transition transform hover:-translate-y-0.5">
+            Start with AI Identifier <ArrowRight size={20} />
           </Link>
         </div>
       </section>

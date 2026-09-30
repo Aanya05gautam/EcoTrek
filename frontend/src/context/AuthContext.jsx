@@ -24,6 +24,28 @@ export function AuthProvider({ children }) {
     return res.user;
   };
 
+  const adminLogin = async (email, password) => {
+    const res = await api('/auth/admin-login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password })
+    });
+    if (res.token) localStorage.setItem('ecotrek_token', res.token);
+    setUser(res.user);
+    localStorage.setItem('ecotrek_user', JSON.stringify(res.user));
+    return res.user;
+  };
+
+  const adminRegister = async (name, email, password, setupKey) => {
+    const res = await api('/auth/admin-register', {
+      method: 'POST',
+      body: JSON.stringify({ name, email, password, setupKey })
+    });
+    if (res.token) localStorage.setItem('ecotrek_token', res.token);
+    setUser(res.user);
+    localStorage.setItem('ecotrek_user', JSON.stringify(res.user));
+    return res.user;
+  };
+
   const register = async (name, email, password) => {
     const res = await api('/auth/register', { 
       method: 'POST', 
@@ -50,7 +72,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, updateEcoPoints }}>
+    <AuthContext.Provider value={{ user, login, adminLogin, adminRegister, register, logout, updateEcoPoints }}>
       {children}
     </AuthContext.Provider>
   );

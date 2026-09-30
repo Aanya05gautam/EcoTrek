@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
 import { ShieldAlert } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { API_URL } from '../api';
+import { api, API_URL } from '../api';
 
 const SOCKET_URL = API_URL.replace('/api', '');
 
@@ -13,6 +13,13 @@ export default function Driver() {
   const [lat, setLat] = useState(0);
   const [lng, setLng] = useState(0);
   const [watchId, setWatchId] = useState(null);
+  const [route, setRoute] = useState(null);
+
+  useEffect(() => {
+    api('/reports/route?lat=28.6139&lng=77.2090&capacity=20')
+      .then(setRoute)
+      .catch(() => setRoute(null));
+  }, []);
 
   useEffect(() => {
     const s = io(SOCKET_URL);
@@ -56,6 +63,24 @@ export default function Driver() {
             LATITUDE: {lat.toFixed(6)}<br/>
             LONGITUDE: {lng.toFixed(6)}<br/>
             <span className="text-yellow-400 mt-2 block animate-pulse">BROADCASTING COORDINATES TO CITIZEN RADAR...</span>
+          </div>
+        )}
+
+        {route && (
+          <div className="bg-black/40 p-5 rounded-2xl text-left text-emerald-100 relative z-10 border border-emerald-800 shadow-inner mb-8">
+            <div className="flex justify-between gap-4 font-bold">
+              <span>Optimized route</span>
+              <span className="text-emerald-400">{route.totalDistanceKm} km</span>
+            </div>
+            <p className="text-sm text-emerald-300 mt-2">{route.stops.length} hotspot stop(s) · {route.capacityUsed}/{route.capacity} report units</p>
+            <div className="mt-4 space-y-2">
+              {route.stops.map(stop => (
+                <div key={stop.sequence} className="flex items-center gap-3 text-sm">
+                  <span className="h-6 w-6 rounded-full bg-emerald-500 text-emerald-950 flex items-center justify-center font-extrabold">{stop.sequence}</span>
+                  <span>{stop.priority} · {stop.reportCount} report(s) · {stop.distanceFromPreviousKm} km</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

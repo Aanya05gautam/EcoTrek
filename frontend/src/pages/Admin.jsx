@@ -1,21 +1,30 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api';
 import Map from '../components/Map';
 import { useAuth } from '../context/AuthContext';
-import { Activity, AlertTriangle, CheckCircle, ShieldAlert } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle, MapPin, ShieldAlert } from 'lucide-react';
 
 export default function Admin() {
   const { user } = useAuth();
   const [reports, setReports] = useState([]);
   const [pickups, setPickups] = useState([]);
+  const [hotspots, setHotspots] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [reportFilter, setReportFilter] = useState('All');
 
   const load = async () => {
     setReports(await api('/reports'));
     setPickups(await api('/pickups'));
+    setHotspots(await api('/reports/hotspots'));
+    setUsers(await api('/auth/users'));
   };
 
   useEffect(() => {
-    if (user?.role === 'Admin') load();
+    if (user?.role !== 'Admin') return undefined;
+    load();
+    const refresh = setInterval(load, 5000);
+    return () => clearInterval(refresh);
   }, [user]);
 
   if (user?.role !== 'Admin') {
@@ -24,7 +33,8 @@ export default function Admin() {
         <div className="bg-white/80 backdrop-blur-md rounded-3xl p-10 text-center border border-red-100 shadow-xl">
           <ShieldAlert size={48} className="mx-auto text-red-500 mb-4" />
           <h2 className="text-3xl font-extrabold text-slate-900 mb-4">RESTRICTED AUTHORITY ZONE</h2>
-          <p className="text-slate-600 font-medium text-lg">Your clearance is insufficient. A MongoDB superuser must assign your node the 'Admin' role.</p>
+          <p className="text-slate-600 font-medium text-lg">This portal is restricted to administrator accounts.</p>
+          <Link to="/admin/login" className="inline-flex mt-6 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-3 rounded-xl font-extrabold">Go to Admin Login</Link>
         </div>
       </div>
     );
@@ -39,6 +49,15 @@ export default function Admin() {
     await api('/pickups/' + id, { method: 'PATCH', body: JSON.stringify({ status }) });
     load();
   };
+
+  const updateRole = async (id, role) => {
+    await api('/auth/users/' + id + '/role', { method: 'PATCH', body: JSON.stringify({ role }) });
+    setUsers(await api('/auth/users'));
+  };
+
+  const visibleReports = reportFilter === 'All'
+    ? reports
+    : reports.filter(report => report.status === reportFilter);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-12">
@@ -95,24 +114,42 @@ export default function Admin() {
         </div>
         
         <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-6 border border-emerald-100 shadow-[0_8px_30px_rgba(6,78,59,0.04)] flex flex-col h-[480px]">
-          <h2 className="text-xl font-extrabold text-emerald-950 mb-6">Hotspot Index Log</h2>
+          <div className="flex items-center justify-between gap-4 mb-6">
+            <div>
+              <h2 className="text-xl font-extrabold text-emerald-950">Incoming Citizen Requests</h2>
+              <p className="text-sm text-emerald-700/70 font-semibold mt-1">Review, triage, and dispatch submitted waste reports.</p>
+            </div>
+            <select className="bg-white border border-emerald-200 text-sm rounded-lg px-3 py-2 text-emerald-900 font-bold" value={reportFilter} onChange={e => setReportFilter(e.target.value)}>
+              <option>All</option>
+              <option>Pending</option>
+              <option>In Progress</option>
+              <option>Resolved</option>
+            </select>
+          </div>
           <div className="overflow-x-auto flex-grow custom-scrollbar pr-2">
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-emerald-100 text-sm font-extrabold text-emerald-800 uppercase tracking-wider bg-emerald-50/50">
-                  <th className="py-3 px-3 rounded-tl-lg">Identifier</th>
-                  <th className="py-3 px-2">AI Tag</th>
+                  <th className="py-3 px-3 rounded-tl-lg">Request</th>
+                  <th className="py-3 px-2">Mode / AI</th>
+                  <th className="py-3 px-2">Priority</th>
                   <th className="py-3 px-3 rounded-tr-lg">Mutate</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-emerald-50">
-                {reports.map(r => (
+                {visibleReports.map(r => (
                   <tr key={r._id || r.id} className="hover:bg-emerald-50/50 transition-colors">
-                    <td className="py-4 px-3 font-bold text-emerald-900">{r.title}</td>
+                    <td className="py-4 px-3">
+                      <div className="font-bold text-emerald-900">{r.title}</div>
+                      <div className="text-xs text-slate-500 mt-1">{r.address || 'GPS coordinates submitted'}</div>
+                    </td>
                     <td className="py-4 px-2">
-                      <span className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold px-2.5 py-1 rounded-md shadow-sm">
-                        {r.aiCategory}
-                      </span>
+                      <div className="text-xs font-bold text-slate-500">{r.reportType || 'Outdoor/Public'}</div>
+                      <span className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold px-2.5 py-1 rounded-md shadow-sm inline-block mt-1">{r.aiCategory}</span>
+                    </td>
+                    <td className="py-4 px-2">
+                      <div className="text-xs font-extrabold text-red-700">{r.priority || 'Low'}</div>
+                      <div className="text-xs text-slate-500">{r.severity || 'Medium'} · {r.quantity || 'Medium'}</div>
                     </td>
                     <td className="py-4 px-3">
                       <select 
@@ -127,10 +164,31 @@ export default function Admin() {
                     </td>
                   </tr>
                 ))}
+                {visibleReports.length === 0 && <tr><td colSpan="4" className="py-10 text-center text-slate-500 font-semibold">No requests in this queue.</td></tr>}
               </tbody>
             </table>
           </div>
         </div>
+      </div>
+
+      <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-6 border border-emerald-100 shadow-sm mb-8">
+        <h2 className="text-xl font-extrabold text-emerald-950 mb-5">Prioritized Waste Hotspots</h2>
+        {hotspots.length === 0 ? (
+          <p className="text-slate-500 font-medium">No unresolved report clusters yet.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {hotspots.map((hotspot, index) => (
+              <div key={`${hotspot.center.lat}-${hotspot.center.lng}-${index}`} className="border border-emerald-100 rounded-2xl p-4 bg-emerald-50/50">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-extrabold text-emerald-950">Cluster {index + 1}</span>
+                  <span className="text-xs font-extrabold uppercase text-red-700 bg-red-50 border border-red-100 px-2 py-1 rounded-md">{hotspot.priority}</span>
+                </div>
+                <p className="text-sm text-emerald-800 font-semibold mt-3">{hotspot.reportCount} report(s) · {hotspot.severity} severity · {hotspot.quantity} quantity</p>
+                <p className="text-xs text-slate-500 mt-2">{hotspot.center.lat.toFixed(5)}, {hotspot.center.lng.toFixed(5)}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       
       <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-8 border border-blue-100 shadow-[0_8px_30px_rgba(37,99,235,0.04)]">
@@ -157,6 +215,38 @@ export default function Admin() {
             </div>
           ))}
           {pickups.length === 0 && <p className="text-slate-500 font-medium">No pickup dispatches open.</p>}
+        </div>
+      </div>
+
+      <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-6 border border-emerald-100 shadow-sm mt-8">
+        <div className="flex items-center justify-between gap-4 mb-5">
+          <div>
+            <h2 className="text-xl font-extrabold text-emerald-950">User and Authority Management</h2>
+            <p className="text-sm text-emerald-700/70 font-semibold mt-1">Manage multiple citizen and administrator accounts from the portal.</p>
+          </div>
+          <span className="text-sm font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-lg">{users.length} accounts</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead className="text-xs uppercase tracking-wider text-emerald-800 bg-emerald-50">
+              <tr><th className="p-3">User</th><th className="p-3">Email</th><th className="p-3">Eco-points</th><th className="p-3">Access role</th></tr>
+            </thead>
+            <tbody className="divide-y divide-emerald-50">
+              {users.map(account => (
+                <tr key={account._id || account.id}>
+                  <td className="p-3 font-bold text-emerald-950">{account.name}</td>
+                  <td className="p-3 text-sm text-slate-600">{account.email}</td>
+                  <td className="p-3 text-sm font-semibold text-emerald-700">{account.ecoPoints || 0}</td>
+                  <td className="p-3">
+                    <select className="border border-emerald-200 rounded-lg px-3 py-2 text-sm font-bold text-emerald-900" value={account.role} onChange={event => updateRole(account._id || account.id, event.target.value)}>
+                      <option>Citizen</option>
+                      <option>Admin</option>
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

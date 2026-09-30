@@ -17,31 +17,15 @@ export default function Pickups() {
   const [driverPos, setDriverPos] = useState(null);
 
   useEffect(() => {
-    if (user) {
-      const load = () => api('/pickups').then(res => Array.isArray(res) && setItems(res)).catch(() => {});
-      load();
-      const interval = setInterval(load, 3000); 
-      
-      const s = io(SOCKET_URL);
-      s.on('fleet_radar', (coords) => setDriverPos(coords));
+    const load = () => api('/pickups').then(res => Array.isArray(res) && setItems(res)).catch(() => {});
+    load();
+    const interval = setInterval(load, 3000);
 
-      return () => {
-        clearInterval(interval);
-        s.disconnect();
-      };
-    }
-  }, [user]);
+    const s = io(SOCKET_URL);
+    s.on('fleet_radar', (coords) => setDriverPos(coords));
 
-  if (!user) {
-    return (
-      <div className="max-w-4xl mx-auto px-4 py-20">
-        <div className="bg-white/90 backdrop-blur-md rounded-3xl p-10 text-center border border-emerald-100 shadow-xl">
-          <h2 className="text-3xl font-extrabold text-emerald-950 mb-4">Login Required</h2>
-          <p className="text-emerald-700/80 font-medium text-lg">You must navigate through the core authorization node first.</p>
-        </div>
-      </div>
-    );
-  }
+    return () => { clearInterval(interval); s.disconnect(); };
+  }, []);
 
   const submit = async (e) => {
     e.preventDefault();

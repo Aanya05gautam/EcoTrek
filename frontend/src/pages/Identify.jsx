@@ -1,12 +1,17 @@
 import React, { useState } from 'react';
 import { api } from '../api';
-import { Camera, CheckCircle, UploadCloud, ShieldAlert, BadgeCheck, Lightbulb, Zap } from 'lucide-react';
+import { Camera, CheckCircle, UploadCloud, ShieldAlert, BadgeCheck, Lightbulb, Zap, Truck, Eye, EyeOff } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export default function Identify() {
+  const { user } = useAuth();
   const [file, setFile] = useState(null);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
+  const [pickupForm, setPickupForm] = useState({ estimatedWeight: '', address: '', slotDate: '' });
+  const [pickupMessage, setPickupMessage] = useState('');
+  const [pickupLoading, setPickupLoading] = useState(false);
 
   const submit = async () => {
     if (!file) return;
@@ -33,21 +38,21 @@ export default function Identify() {
             
             <div className="relative z-10">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-800/80 rounded-full text-emerald-200 font-bold text-xs uppercase tracking-widest mb-6 border border-emerald-500/30">
-                <Camera size={14} /> Tensor Network
+                <Camera size={14} /> Keras Vision Model
               </span>
-              <h2 className="text-4xl font-extrabold text-white mb-6 tracking-tight leading-tight">AI Vision Engine</h2>
+              <h2 className="text-4xl font-extrabold text-white mb-6 tracking-tight leading-tight">Local Waste Classifier</h2>
               <p className="text-emerald-100/90 font-medium text-lg leading-relaxed mb-6">
-                Unsure if an item goes into the Organic, Recyclable, or Hazardous bin? Simply feed an image to our decentralized convolutional neural network. 
+                Upload a waste image and let the exported Keras model classify it into the correct disposal category.
               </p>
               
               <ul className="space-y-4 border-t border-emerald-500/30 pt-6 mt-auto">
                 <li className="flex items-start gap-4">
                   <BadgeCheck className="text-emerald-400 shrink-0 mt-1" size={20} />
-                  <span className="text-emerald-50 font-medium">98.4% Classification Accuracy</span>
+                  <span className="text-emerald-50 font-medium">Model-backed image classification</span>
                 </li>
                 <li className="flex items-start gap-4">
                   <Zap className="text-emerald-400 shrink-0 mt-1" size={20} />
-                  <span className="text-emerald-50 font-medium">Real-time SDG 12 Processing</span>
+                  <span className="text-emerald-50 font-medium">Instant preview from the local service</span>
                 </li>
               </ul>
             </div>
@@ -69,8 +74,8 @@ export default function Identify() {
                   }} 
                 />
                 <UploadCloud size={56} className="text-emerald-300 group-hover:text-emerald-500 group-hover:scale-110 transition-all mb-4" />
-                <div className="text-xl font-bold text-emerald-950 group-hover:text-emerald-700 transition-colors mb-2">Upload Visual Data</div>
-                <div className="text-sm font-semibold text-emerald-600/70">Tap or drag/drop a high-res image here</div>
+                <div className="text-xl font-bold text-emerald-950 group-hover:text-emerald-700 transition-colors mb-2">Upload Waste Image</div>
+                <div className="text-sm font-semibold text-emerald-600/70">Tap or drag and drop an image here for Keras inference</div>
               </div>
               
               {file && (
@@ -104,7 +109,7 @@ export default function Identify() {
                     </div>
                     <div>
                       <h3 className="text-2xl font-extrabold text-white">{result.category}</h3>
-                      <div className="text-emerald-400 font-bold text-sm uppercase tracking-wider">{result.confidence}% Match Ratio</div>
+                      <div className="text-emerald-400 font-bold text-sm uppercase tracking-wider">{result.confidence}% Confidence</div>
                     </div>
                   </div>
                   <div className="relative z-10 space-y-4">
@@ -115,6 +120,32 @@ export default function Identify() {
                     {result.note && (
                       <div className="ml-8 mt-2 inline-block px-4 py-2 bg-emerald-900 rounded-xl text-emerald-300 text-sm font-bold border border-emerald-800">
                         System Note: {result.note}
+                      </div>
+                    )}
+                    <div className="ml-8 rounded-xl bg-emerald-900/80 border border-emerald-800 px-4 py-3 text-sm font-semibold text-emerald-200">
+                      <span className="font-extrabold text-emerald-300">Recommended action: </span>{result.action || result.guidance}
+                    </div>
+                    {result.requiresPickup && (
+                      <div className="ml-8 mt-4 rounded-2xl bg-white/10 border border-emerald-700 p-4">
+                        <div className="flex items-center gap-2 font-extrabold text-white"><Truck size={18} className="text-emerald-400" /> Request household disposal pickup</div>
+                        <div className="grid gap-3 mt-4">
+                            <input type="number" min="0.1" step="0.1" required placeholder="Estimated weight (kg)" value={pickupForm.estimatedWeight} onChange={e => setPickupForm({ ...pickupForm, estimatedWeight: e.target.value })} className="rounded-lg px-3 py-2 text-slate-900 font-semibold" />
+                            <input required placeholder="Pickup address" value={pickupForm.address} onChange={e => setPickupForm({ ...pickupForm, address: e.target.value })} className="rounded-lg px-3 py-2 text-slate-900 font-semibold" />
+                            <input type="datetime-local" required value={pickupForm.slotDate} onChange={e => setPickupForm({ ...pickupForm, slotDate: e.target.value })} className="rounded-lg px-3 py-2 text-slate-900 font-semibold" />
+                            <button type="button" disabled={pickupLoading} onClick={async () => {
+                              setPickupLoading(true);
+                              setPickupMessage('');
+                              try {
+                                await api('/pickups', { method: 'POST', body: JSON.stringify({ wasteType: result.category, source: 'Household', ...pickupForm }) });
+                                setPickupMessage('Pickup request sent to the municipal admin portal.');
+                              } catch (pickupError) {
+                                setPickupMessage(pickupError.message || 'Pickup request failed.');
+                              } finally {
+                                setPickupLoading(false);
+                              }
+                            }} className="rounded-lg bg-emerald-500 hover:bg-emerald-400 text-emerald-950 py-2 font-extrabold disabled:opacity-50">{pickupLoading ? 'Submitting...' : 'Submit pickup request'}</button>
+                            {pickupMessage && <p className="text-sm text-emerald-200 font-semibold">{pickupMessage}</p>}
+                        </div>
                       </div>
                     )}
                   </div>
