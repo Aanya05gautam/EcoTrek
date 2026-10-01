@@ -149,7 +149,7 @@ export default function Admin() {
                     </td>
                     <td className="py-4 px-2">
                       <div className="text-xs font-extrabold text-red-700">{r.priority || 'Low'}</div>
-                      <div className="text-xs text-slate-500">{r.severity || 'Medium'} · {r.quantity || 'Medium'}</div>
+                      <div className="text-xs text-slate-500">{r.severity || 'Medium'} · {r.quantity || 'Medium'} quantity · {r.density || 'Medium'} density · {r.hazard || 'None'} hazard</div>
                     </td>
                     <td className="py-4 px-3">
                       <select 

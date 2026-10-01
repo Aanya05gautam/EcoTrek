@@ -42,6 +42,7 @@ io.on('connection', (socket) => {
 });
 
 const port=process.env.PORT||5000;
-connectDB().finally(()=>server.listen(port,()=>console.log(`EcoTrek Smart API + WebSockets running on http://localhost:${port}`)));
+server.listen(port,()=>console.log(`EcoTrek Smart API + WebSockets running on http://localhost:${port}`));
+connectDB();
 
 // Trigger seamless nodemon restart to load .env variables - Offline Engine active (final)

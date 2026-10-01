@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
-import { Camera, CheckCircle, UploadCloud, ShieldAlert, BadgeCheck, Lightbulb, Zap, Leaf, Recycle, TriangleAlert, Sparkles, ArrowRight, Heart } from 'lucide-react';
+import { Camera, UploadCloud, ShieldAlert, BadgeCheck, Lightbulb, Zap, Leaf, Recycle, TriangleAlert, Sparkles, ArrowRight, Heart, Home, MapPin } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function Identify() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [file, setFile] = useState(null);
+  const [workflow, setWorkflow] = useState('household');
   const [result, setResult] = useState(null);
   const [recommendation, setRecommendation] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -27,7 +30,12 @@ export default function Identify() {
     const fd = new FormData();
     fd.append('image', file);
     try {
-      setResult(await api('/ai/identify', { method: 'POST', body: fd }));
+      const classification = await api('/ai/identify', { method: 'POST', body: fd });
+      if (workflow === 'outdoor') {
+        navigate('/reports', { state: { file, analysis: classification, fromIdentify: true } });
+        return;
+      }
+      setResult(classification);
       setRecommendation(null);
     } catch(e) {
       setErr(e.message);
@@ -49,12 +57,7 @@ export default function Identify() {
     fd.append('category', result.category);
     fd.append('confidence', result.confidence);
     try {
-      const advice = await api('/ai/recommend', { method: 'POST', body: fd });
-      const disposalReport = await api('/household-disposals', {
-        method: 'POST',
-        body: JSON.stringify({ ...advice, imageUrl: result.imageUrl })
-      });
-      setRecommendation({ ...advice, disposalReport });
+      navigate('/recommendation', { state: { file, result } });
     } catch (error) {
       setErr(error.message);
     } finally {
@@ -97,6 +100,20 @@ export default function Identify() {
           <section className="bg-white/80 backdrop-blur-xl rounded-[2.5rem] p-8 md:p-12 border border-emerald-100 shadow-[0_8px_40px_rgba(6,78,59,0.06)] relative h-full flex flex-col items-center justify-center">
             
             <div className="w-full max-w-lg">
+              <div className="mb-8">
+                <div className="text-xs font-extrabold uppercase tracking-[0.18em] text-emerald-600 mb-3">Choose your workflow</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button type="button" onClick={() => setWorkflow('household')} className={`rounded-2xl border p-4 text-left transition ${workflow === 'household' ? 'border-emerald-500 bg-emerald-100 shadow-sm' : 'border-emerald-100 bg-white hover:border-emerald-300'}`}>
+                    <span className="flex items-center gap-2 font-extrabold text-emerald-950"><Home size={19} /> Household waste</span>
+                    <span className="block text-xs font-semibold text-emerald-700/75 mt-2">Classify it and get reuse or recycle guidance.</span>
+                  </button>
+                  <button type="button" onClick={() => setWorkflow('outdoor')} className={`rounded-2xl border p-4 text-left transition ${workflow === 'outdoor' ? 'border-emerald-500 bg-emerald-100 shadow-sm' : 'border-emerald-100 bg-white hover:border-emerald-300'}`}>
+                    <span className="flex items-center gap-2 font-extrabold text-emerald-950"><MapPin size={19} /> Outdoor waste</span>
+                    <span className="block text-xs font-semibold text-emerald-700/75 mt-2">Classify it, add GPS details, and report it to the city.</span>
+                  </button>
+                </div>
+              </div>
+
               <div className="relative border-2 border-dashed border-emerald-200 rounded-3xl bg-emerald-50/30 hover:bg-emerald-50 hover:border-emerald-400 transition-all p-12 flex flex-col items-center justify-center cursor-pointer group shadow-sm text-center">
                 <input 
                   type="file" 
@@ -126,7 +143,7 @@ export default function Identify() {
                 disabled={!file || loading} 
                 onClick={submit}
               >
-                {loading ? <span className="animate-pulse">Processing via AI Authority Node...</span> : <><Camera size={20}/> Run Neural Analysis</>}
+                {loading ? <span className="animate-pulse">Processing via AI Authority Node...</span> : <><Camera size={20}/> {workflow === 'outdoor' ? 'Classify and create report' : 'Run Neural Analysis'}</>}
               </button>
               
               {err && (
@@ -147,7 +164,7 @@ export default function Identify() {
                       <div className="text-emerald-200 font-bold text-sm">{result.confidence}% confidence</div>
                     </div>
                   </div>
-                  <p className="mt-6 text-emerald-100 font-medium">The image has been classified. Get a separate AI recommendation when you are ready.</p>
+                  <p className="mt-6 text-emerald-100 font-medium">The image has been classified. Continue to a separate page for a structured reuse and recycle plan.</p>
                   <button type="button" onClick={getRecommendation} disabled={recommendationLoading} className="mt-5 w-full rounded-2xl bg-emerald-400 px-5 py-3 font-extrabold text-emerald-950 hover:bg-emerald-300 disabled:opacity-50">
                     {recommendationLoading ? 'Generating recommendation...' : 'Get recycle recommendation'}
                   </button>

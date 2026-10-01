@@ -13,6 +13,8 @@ const reportSchema = new mongoose.Schema({
   aiConfidence: { type: Number, default: 0 },
   reportType: { type: String, enum: ['Household', 'Outdoor/Public'], default: 'Outdoor/Public' },
   quantity: { type: String, enum: ['Low', 'Medium', 'High'], default: 'Medium' },
+  density: { type: String, enum: ['Low', 'Medium', 'High'], default: 'Medium' },
+  hazard: { type: String, enum: ['None', 'Possible', 'Confirmed'], default: 'None' },
   severity: { type: String, enum: ['Low', 'Medium', 'High', 'Critical'], default: 'Medium' },
   priority: { type: String, enum: ['Low', 'Medium', 'High', 'Critical'], default: 'Low' },
   location: {

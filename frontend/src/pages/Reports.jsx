@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { api, uploadUrl } from '../api';
 import { useAuth } from '../context/AuthContext';
+import { useLocation } from 'react-router-dom';
 import Map from '../components/Map';
 import { MapPin, Navigation, Info, ExternalLink } from 'lucide-react';
 
 export default function Reports() {
   const { user, updateEcoPoints } = useAuth();
+  const location = useLocation();
   const [reports, setReports] = useState([]);
-  const [form, setForm] = useState({ title: '', description: '', address: '', lat: '28.6139', lng: '77.2090', aiCategory: 'Unknown', aiConfidence: 0, reportType: 'Outdoor/Public', quantity: 'Medium', severity: 'Medium' });
+  const [form, setForm] = useState({ title: '', description: '', address: '', lat: '28.6139', lng: '77.2090', aiCategory: 'Unknown', aiConfidence: 0, reportType: 'Outdoor/Public', quantity: 'Medium', density: 'Medium', hazard: 'None', severity: 'Medium' });
   const [file, setFile] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
@@ -20,6 +22,21 @@ export default function Reports() {
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    const workflow = location.state;
+    if (!workflow?.fromIdentify || !workflow.file) return;
+    setFile(workflow.file);
+    setAnalysis(workflow.analysis || null);
+    setForm(prev => ({
+      ...prev,
+      title: `Outdoor ${workflow.analysis?.category || 'waste'} report`,
+      description: `AI classified this outdoor waste as ${workflow.analysis?.category || 'Unknown'} with ${workflow.analysis?.confidence || 0}% confidence. Add scene details before submitting.`,
+      aiCategory: workflow.analysis?.category || 'Unknown',
+      aiConfidence: Number(workflow.analysis?.confidence) || 0,
+      reportType: 'Outdoor/Public'
+    }));
+  }, [location.state]);
 
   const detectLocation = () => {
     if (navigator.geolocation) {
@@ -132,7 +149,7 @@ export default function Reports() {
                 <textarea rows="3" className="w-full bg-slate-50 border border-emerald-100 rounded-xl px-5 py-4 text-emerald-950 focus:bg-white focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all font-semibold shadow-sm" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Provide scene context..." required />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
                 <label className="text-emerald-950 font-extrabold text-xs uppercase tracking-wider">
                   Report mode
                   <select className="mt-2 w-full bg-slate-50 border border-emerald-100 rounded-xl px-3 py-3 text-emerald-950 font-semibold" value={form.reportType} onChange={e => setForm({ ...form, reportType: e.target.value })}>
@@ -146,6 +163,22 @@ export default function Reports() {
                     <option>Low</option>
                     <option>Medium</option>
                     <option>High</option>
+                  </select>
+                </label>
+                <label className="text-emerald-950 font-extrabold text-xs uppercase tracking-wider">
+                  Density
+                  <select className="mt-2 w-full bg-slate-50 border border-emerald-100 rounded-xl px-3 py-3 text-emerald-950 font-semibold" value={form.density} onChange={e => setForm({ ...form, density: e.target.value })}>
+                    <option>Low</option>
+                    <option>Medium</option>
+                    <option>High</option>
+                  </select>
+                </label>
+                <label className="text-emerald-950 font-extrabold text-xs uppercase tracking-wider">
+                  Hazard
+                  <select className="mt-2 w-full bg-slate-50 border border-emerald-100 rounded-xl px-3 py-3 text-emerald-950 font-semibold" value={form.hazard} onChange={e => setForm({ ...form, hazard: e.target.value })}>
+                    <option>None</option>
+                    <option>Possible</option>
+                    <option>Confirmed</option>
                   </select>
                 </label>
                 <label className="text-emerald-950 font-extrabold text-xs uppercase tracking-wider">

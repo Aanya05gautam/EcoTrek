@@ -6,6 +6,7 @@ import Footer from "./components/Footer";
 
 import Home from "./pages/Home";
 import Identify from "./pages/Identify";
+import Recommendation from "./pages/Recommendation";
 import Reports from "./pages/Reports";
 import Pickups from "./pages/Pickups";
 import Training from "./pages/Training";
@@ -23,6 +24,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/identify" element={<Identify />} />
+          <Route path="/recommendation" element={<Recommendation />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/pickups" element={<Pickups />} />
           <Route path="/training" element={<Training />} />

@@ -17,6 +17,8 @@ export async function createReport(req, res) {
     lng,
     reportType = 'Outdoor/Public',
     quantity = 'Medium',
+    density = 'Medium',
+    hazard = 'None',
     severity = 'Medium'
   } = req.body;
   const imageUrl = req.file ? `/uploads/${req.file.filename}` : '';
@@ -40,6 +42,8 @@ export async function createReport(req, res) {
     aiConfidence: Number(aiResult.confidence ?? aiConfidence) || 0,
     reportType,
     quantity,
+    density,
+    hazard,
     severity,
     priority: calculatePriority({ quantity, severity }),
     address,
