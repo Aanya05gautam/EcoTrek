@@ -1,1 +1,1 @@
-import {Router} from 'express'; import upload from '../middleware/upload.js'; import {identify} from '../controllers/aiController.js'; const r=Router();r.post('/identify',upload.single('image'),identify);export default r;
+import {Router} from 'express'; import upload from '../middleware/upload.js'; import {identify, recommend} from '../controllers/aiController.js'; const r=Router();r.post('/identify',upload.single('image'),identify);r.post('/recommend',upload.single('image'),recommend);export default r;

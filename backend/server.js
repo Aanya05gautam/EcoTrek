@@ -10,6 +10,7 @@ import authRoutes from './routes/auth.js';
 import aiRoutes from './routes/ai.js'; 
 import reportRoutes from './routes/reports.js'; 
 import pickupRoutes from './routes/pickups.js'; 
+import householdDisposalRoutes from './routes/householdDisposals.js';
 import trainingRoutes from './routes/training.js';
 
 dotenv.config(); 
@@ -25,7 +26,7 @@ app.get('/api/health',(req,res)=>res.json({ok:true,service:'EcoTrek API',time:ne
 
 app.get('/api',(req,res)=>res.json({message:'Welcome to the EcoTrek API v1.0. Backend is fully operational.'}));
 app.use('/api/auth',authRoutes);app.use('/api/ai',aiRoutes);app.use('/api/reports',reportRoutes);
-app.use('/api/pickups',pickupRoutes);app.use('/api/training',trainingRoutes);
+app.use('/api/pickups',pickupRoutes);app.use('/api/household-disposals',householdDisposalRoutes);app.use('/api/training',trainingRoutes);
 app.use((err,req,res,next)=>{console.error(err);res.status(500).json({message:err.message||'Server error'});});
 
 const server = http.createServer(app);

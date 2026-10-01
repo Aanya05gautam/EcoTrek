@@ -2,6 +2,7 @@ export const memoryStore = {
   users: [],
   reports: [],
   pickups: [],
+  householdDisposals: [],
   quizzes: [
     {
       id: 'q1',

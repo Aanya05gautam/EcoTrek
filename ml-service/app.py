@@ -15,7 +15,7 @@ from tensorflow.keras.utils import register_keras_serializable
 
 
 BASE_DIR = Path(__file__).resolve().parent
-MODEL_PATH = Path(os.getenv("MODEL_PATH", BASE_DIR / "Updated_Ml_Model_from_scratch.keras"))
+MODEL_PATH = Path(os.getenv("MODEL_PATH", BASE_DIR / "ecotrek_edf_net.keras"))
 LABELS_PATH = Path(os.getenv("LABELS_PATH", BASE_DIR / "labels.json"))
 IMAGE_SIZE = tuple(
     int(x.strip()) for x in os.getenv("IMAGE_SIZE", "224,224").split(",") if x.strip()
@@ -62,7 +62,7 @@ app.add_middleware(
 )
 
 model = None
-labels = ["Wet/Organic", "Dry/Recyclable", "Hazardous", "E-Waste"]
+labels = ["Hazardous", "Non-Recyclable", "Organic", "Recyclable", "Other"]
 
 
 def load_labels() -> list[str]:
@@ -111,9 +111,14 @@ def preprocess_image(raw_bytes: bytes) -> np.ndarray:
 
 def build_response(probabilities: np.ndarray) -> dict:
     class_labels = load_labels()
+    if len(class_labels) != len(probabilities):
+        raise RuntimeError(
+            f"Model returns {len(probabilities)} classes but labels.json contains {len(class_labels)} labels. "
+            "Update labels.json using the original training class order."
+        )
     top_index = int(np.argmax(probabilities))
     confidence = float(probabilities[top_index])
-    category = class_labels[top_index] if top_index < len(class_labels) else "Other"
+    category = class_labels[top_index]
 
     guidance_map = {
         "Hazardous": "Handle separately and use an authorized hazardous waste facility.",
