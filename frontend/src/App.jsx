@@ -8,10 +8,7 @@ import Home from "./pages/Home";
 import Identify from "./pages/Identify";
 import Recommendation from "./pages/Recommendation";
 import Reports from "./pages/Reports";
-import Pickups from "./pages/Pickups";
-import Training from "./pages/Training";
 import Admin from "./pages/Admin";
-import Login from "./pages/Login";
 import Driver from "./pages/Driver";
 import AdminLogin from "./pages/AdminLogin";
 
@@ -26,10 +23,7 @@ function App() {
           <Route path="/identify" element={<Identify />} />
           <Route path="/recommendation" element={<Recommendation />} />
           <Route path="/reports" element={<Reports />} />
-          <Route path="/pickups" element={<Pickups />} />
-          <Route path="/training" element={<Training />} />
           <Route path="/admin" element={<Admin />} />
-          <Route path="/login" element={<Login />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/driver" element={<Driver />} />
         </Routes>

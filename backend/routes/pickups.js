@@ -1,1 +1,0 @@
-import {Router} from 'express'; import {auth,adminOnly} from '../middleware/auth.js'; import {createPickup,listPickups,updatePickup} from '../controllers/pickupController.js'; const r=Router();r.get('/',listPickups);r.post('/',createPickup);r.patch('/:id',auth,adminOnly,updatePickup);export default r;
