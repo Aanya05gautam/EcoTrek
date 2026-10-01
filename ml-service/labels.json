@@ -3,6 +3,7 @@
     "Hazardous",
     "Non-Recyclable",
     "Organic",
-    "Recyclable"
+    "Recyclable",
+    "Other"
   ]
 }

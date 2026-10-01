@@ -1,17 +1,24 @@
 import React, { useState } from 'react';
 import { api } from '../api';
-import { Camera, CheckCircle, UploadCloud, ShieldAlert, BadgeCheck, Lightbulb, Zap, Truck, Eye, EyeOff } from 'lucide-react';
+import { Camera, CheckCircle, UploadCloud, ShieldAlert, BadgeCheck, Lightbulb, Zap, Leaf, Recycle, TriangleAlert, Sparkles, ArrowRight, Heart } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function Identify() {
   const { user } = useAuth();
   const [file, setFile] = useState(null);
   const [result, setResult] = useState(null);
+  const [recommendation, setRecommendation] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [recommendationLoading, setRecommendationLoading] = useState(false);
   const [err, setErr] = useState('');
-  const [pickupForm, setPickupForm] = useState({ estimatedWeight: '', address: '', slotDate: '' });
-  const [pickupMessage, setPickupMessage] = useState('');
-  const [pickupLoading, setPickupLoading] = useState(false);
+
+  const ClassificationIcon = result?.category === 'Organic'
+    ? Leaf
+    : result?.category === 'Recyclable'
+      ? Recycle
+      : result?.category === 'Hazardous'
+        ? TriangleAlert
+        : Sparkles;
 
   const submit = async () => {
     if (!file) return;
@@ -21,10 +28,37 @@ export default function Identify() {
     fd.append('image', file);
     try {
       setResult(await api('/ai/identify', { method: 'POST', body: fd }));
+      setRecommendation(null);
     } catch(e) {
       setErr(e.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const getRecommendation = async () => {
+    if (!file || !result) return;
+    if (!user) {
+      setErr('Please sign in before saving a household recommendation.');
+      return;
+    }
+    setRecommendationLoading(true);
+    setErr('');
+    const fd = new FormData();
+    fd.append('image', file);
+    fd.append('category', result.category);
+    fd.append('confidence', result.confidence);
+    try {
+      const advice = await api('/ai/recommend', { method: 'POST', body: fd });
+      const disposalReport = await api('/household-disposals', {
+        method: 'POST',
+        body: JSON.stringify({ ...advice, imageUrl: result.imageUrl })
+      });
+      setRecommendation({ ...advice, disposalReport });
+    } catch (error) {
+      setErr(error.message);
+    } finally {
+      setRecommendationLoading(false);
     }
   };
 
@@ -71,6 +105,8 @@ export default function Identify() {
                   onChange={e => {
                     setFile(e.target.files[0]);
                     setResult(null);
+                    setRecommendation(null);
+                    setErr('');
                   }} 
                 />
                 <UploadCloud size={56} className="text-emerald-300 group-hover:text-emerald-500 group-hover:scale-110 transition-all mb-4" />
@@ -100,54 +136,42 @@ export default function Identify() {
               )}
               
               {result && (
-                <div className="mt-8 bg-emerald-950 p-8 rounded-3xl text-left shadow-2xl relative overflow-hidden text-emerald-50">
-                  <div className="absolute top-0 right-0 -m-10 w-40 h-40 bg-emerald-500/20 blur-3xl rounded-full pointer-events-none"></div>
-                  
-                  <div className="flex items-center gap-4 mb-6 relative z-10 border-b border-emerald-800 pb-6">
+                <div className="mt-8 bg-emerald-950 p-8 rounded-3xl text-left shadow-2xl text-emerald-50">
+                  <div className="flex items-center gap-4 border-b border-emerald-800 pb-6">
                     <div className="h-14 w-14 rounded-2xl bg-emerald-800/80 flex items-center justify-center text-emerald-400 border border-emerald-600/50 shadow-inner">
-                      <CheckCircle size={28} />
+                      <ClassificationIcon size={28} />
                     </div>
                     <div>
+                      <div className="text-xs font-extrabold uppercase tracking-wider text-emerald-400">Keras classification</div>
                       <h3 className="text-2xl font-extrabold text-white">{result.category}</h3>
-                      <div className="text-emerald-400 font-bold text-sm uppercase tracking-wider">{result.confidence}% Confidence</div>
+                      <div className="text-emerald-200 font-bold text-sm">{result.confidence}% confidence</div>
                     </div>
                   </div>
-                  <div className="relative z-10 space-y-4">
-                    <div className="flex items-start gap-3">
-                      <Lightbulb size={20} className="text-emerald-400 shrink-0 mt-1" />
-                      <p className="text-emerald-100 font-medium leading-relaxed">{result.guidance}</p>
+                  <p className="mt-6 text-emerald-100 font-medium">The image has been classified. Get a separate AI recommendation when you are ready.</p>
+                  <button type="button" onClick={getRecommendation} disabled={recommendationLoading} className="mt-5 w-full rounded-2xl bg-emerald-400 px-5 py-3 font-extrabold text-emerald-950 hover:bg-emerald-300 disabled:opacity-50">
+                    {recommendationLoading ? 'Generating recommendation...' : 'Get recycle recommendation'}
+                  </button>
+                </div>
+              )}
+
+              {recommendation && (
+                <div className="mt-8 bg-emerald-950 p-8 rounded-3xl text-left shadow-2xl text-emerald-50">
+                  <div className="flex items-center gap-4 mb-6 border-b border-emerald-800 pb-6">
+                    <div className="h-14 w-14 rounded-2xl bg-emerald-800/80 flex items-center justify-center text-emerald-400 border border-emerald-600/50 shadow-inner">
+                      <Sparkles size={28} />
                     </div>
-                    {result.note && (
-                      <div className="ml-8 mt-2 inline-block px-4 py-2 bg-emerald-900 rounded-xl text-emerald-300 text-sm font-bold border border-emerald-800">
-                        System Note: {result.note}
-                      </div>
-                    )}
-                    <div className="ml-8 rounded-xl bg-emerald-900/80 border border-emerald-800 px-4 py-3 text-sm font-semibold text-emerald-200">
-                      <span className="font-extrabold text-emerald-300">Recommended action: </span>{result.action || result.guidance}
+                    <div>
+                      <div className="text-xs font-extrabold uppercase tracking-wider text-emerald-400">Gemini recommendation</div>
+                      <h3 className="text-2xl font-extrabold text-white">{recommendation.headline || 'Your waste plan'}</h3>
                     </div>
-                    {result.requiresPickup && (
-                      <div className="ml-8 mt-4 rounded-2xl bg-white/10 border border-emerald-700 p-4">
-                        <div className="flex items-center gap-2 font-extrabold text-white"><Truck size={18} className="text-emerald-400" /> Request household disposal pickup</div>
-                        <div className="grid gap-3 mt-4">
-                            <input type="number" min="0.1" step="0.1" required placeholder="Estimated weight (kg)" value={pickupForm.estimatedWeight} onChange={e => setPickupForm({ ...pickupForm, estimatedWeight: e.target.value })} className="rounded-lg px-3 py-2 text-slate-900 font-semibold" />
-                            <input required placeholder="Pickup address" value={pickupForm.address} onChange={e => setPickupForm({ ...pickupForm, address: e.target.value })} className="rounded-lg px-3 py-2 text-slate-900 font-semibold" />
-                            <input type="datetime-local" required value={pickupForm.slotDate} onChange={e => setPickupForm({ ...pickupForm, slotDate: e.target.value })} className="rounded-lg px-3 py-2 text-slate-900 font-semibold" />
-                            <button type="button" disabled={pickupLoading} onClick={async () => {
-                              setPickupLoading(true);
-                              setPickupMessage('');
-                              try {
-                                await api('/pickups', { method: 'POST', body: JSON.stringify({ wasteType: result.category, source: 'Household', ...pickupForm }) });
-                                setPickupMessage('Pickup request sent to the municipal admin portal.');
-                              } catch (pickupError) {
-                                setPickupMessage(pickupError.message || 'Pickup request failed.');
-                              } finally {
-                                setPickupLoading(false);
-                              }
-                            }} className="rounded-lg bg-emerald-500 hover:bg-emerald-400 text-emerald-950 py-2 font-extrabold disabled:opacity-50">{pickupLoading ? 'Submitting...' : 'Submit pickup request'}</button>
-                            {pickupMessage && <p className="text-sm text-emerald-200 font-semibold">{pickupMessage}</p>}
-                        </div>
-                      </div>
-                    )}
+                  </div>
+                  <div className="space-y-4">
+                    <div className="flex items-start gap-3"><Lightbulb size={20} className="text-emerald-400 shrink-0 mt-1" /><p className="text-emerald-100 font-medium leading-relaxed">{recommendation.guidance}</p></div>
+                    <div className="rounded-xl bg-emerald-900/80 border border-emerald-800 px-4 py-3 text-sm font-semibold text-emerald-200"><span className="font-extrabold text-emerald-300">Recommended action: </span>{recommendation.action}</div>
+                    {recommendation.reuseIdeas?.length > 0 && <div className="rounded-xl bg-emerald-900/80 border border-emerald-800 px-4 py-3"><div className="font-extrabold text-emerald-300 text-sm">Reuse and recycle ideas</div><ul className="mt-2 space-y-1 text-sm text-emerald-100 list-disc pl-5">{recommendation.reuseIdeas.map(idea => <li key={idea}>{idea}</li>)}</ul></div>}
+                    {recommendation.steps?.length > 0 && <details className="rounded-xl bg-emerald-900/80 border border-emerald-800 px-4 py-3 group"><summary className="cursor-pointer list-none flex items-center justify-between gap-3 font-extrabold text-emerald-200"><span>Make the next step simple</span><ArrowRight size={17} className="group-open:rotate-90 transition-transform" /></summary><ol className="mt-3 space-y-2 text-sm text-emerald-100 list-decimal pl-5">{recommendation.steps.map(step => <li key={step}>{step}</li>)}</ol></details>}
+                    {recommendation.whyItMatters && <div className="flex items-start gap-2 text-sm text-emerald-200"><Heart size={17} className="text-emerald-400 shrink-0 mt-0.5" />{recommendation.whyItMatters}</div>}
+                    {recommendation.safetyNote && <div className="text-sm font-semibold text-amber-200">Safety: {recommendation.safetyNote}</div>}
                   </div>
                 </div>
               )}
