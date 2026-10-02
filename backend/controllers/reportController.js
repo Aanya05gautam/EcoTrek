@@ -121,19 +121,25 @@ export async function createReport(req, res) {
     };
 
     if (req.file) {
-      try {
-        aiResult = await classifyImage(
-          req.file.path,
-          req.file.originalname,
-          req.file.mimetype,
-        );
-      } catch (error) {
-        console.error(
-          "Image classification failed:",
-          error,
-        );
-      }
-    }
+  try {
+    const endpoint =
+      reportType === "Outdoor/Public"
+        ? "/predict-outdoor"
+        : "/predict";
+
+    aiResult = await classifyImage(
+      req.file.path,
+      req.file.originalname,
+      req.file.mimetype,
+      endpoint
+    );
+  } catch (error) {
+    console.error(
+      "Image classification failed:",
+      error
+    );
+  }
+}
 
     const data = {
       reporter: req.user?.id || null,
@@ -150,13 +156,15 @@ export async function createReport(req, res) {
       imageUrl,
 
       aiCategory:
-        aiResult.category || aiCategory,
+  reportType === "Outdoor/Public"
+    ? aiResult.material || aiCategory
+    : aiResult.category || aiCategory,
 
-      aiConfidence:
-        Number(
-          aiResult.confidence ??
-            aiConfidence,
-        ) || 0,
+aiConfidence:
+  Number(
+    aiResult.confidence ??
+      aiConfidence,
+  ) || 0,
 
       reportType,
       quantity,

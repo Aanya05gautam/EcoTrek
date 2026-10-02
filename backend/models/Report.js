@@ -6,10 +6,38 @@ const reportSchema = new mongoose.Schema({
   description: { type: String, required: true },
   imageUrl: String,
   aiCategory: {
-    type: String,
-    enum: ['Hazardous', 'Non-Recyclable', 'Organic', 'Recyclable', 'Wet/Organic', 'Dry/Recyclable', 'E-Waste', 'Unknown'],
-    default: 'Unknown'
-  },
+  type: String,
+  enum: [
+    'Hazardous',
+    'Non-Recyclable',
+    'Organic',
+    'Recyclable',
+    'Wet/Organic',
+    'Dry/Recyclable',
+    'E-Waste',
+
+    // Household model
+    'cardboard',
+    'glass',
+    'metal',
+    'paper',
+    'plastic',
+    'organic',
+    'trash',
+
+    // Outdoor model
+    'normal',
+    'overflowing',
+    'mixed',
+    'scattered',
+    'organic_green',
+    'hazardous',
+
+    'Unknown'
+  ],
+  default: 'Unknown'
+},
+
   aiConfidence: { type: Number, default: 0 },
   reportType: { type: String, enum: ['Household', 'Outdoor/Public'], default: 'Outdoor/Public' },
   quantity: { type: String, enum: ['Low', 'Medium', 'High'], default: 'Medium' },
