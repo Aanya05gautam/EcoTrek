@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../api";
+import { predictWaste, predictOutdoorWaste } from "../services/mlApi";
 import {
   Camera,
   UploadCloud,
@@ -39,25 +39,36 @@ export default function Identify() {
 
   const submit = async () => {
     if (!file) return;
+
     setLoading(true);
     setErr("");
-    const fd = new FormData();
-    fd.append("image", file);
+
     try {
-      const classification = await api("/ai/identify", {
-        method: "POST",
-        body: fd,
-      });
+      const classification =
+  workflow === "outdoor"
+    ? await predictOutdoorWaste(file)
+    : await predictWaste(file);
+
+      console.log("EcoTrek ML prediction:", classification);
+
       if (workflow === "outdoor") {
         navigate("/reports", {
-          state: { file, analysis: classification, fromIdentify: true },
+          state: {
+            file,
+            analysis: classification,
+            fromIdentify: true,
+          },
         });
+
         return;
       }
+
       setResult(classification);
       setRecommendation(null);
     } catch (e) {
-      setErr(e.message);
+      console.error("Waste classification failed:", e);
+
+      setErr(e.message || "Unable to classify the waste image.");
     } finally {
       setLoading(false);
     }
@@ -230,15 +241,42 @@ export default function Identify() {
                       <h3 className="text-2xl font-extrabold text-white">
                         {result.category}
                       </h3>
-                      <div className="text-emerald-200 font-bold text-sm">
-                        {result.confidence}% confidence
+
+                      <div className="mt-2 text-emerald-200 font-bold text-sm">
+                        Detected material:{" "}
+                        <span className="text-white capitalize">
+                          {result.material}
+                        </span>
+                      </div>
+
+                      <div className="text-emerald-300 font-bold text-sm mt-1">
+                        AI Confidence: {result.confidence}%
                       </div>
                     </div>
                   </div>
-                  <p className="mt-6 text-emerald-100 font-medium">
-                    The image has been classified. Continue to a separate page
-                    for a structured reuse and recycle plan.
-                  </p>
+                  <div className="mt-6 space-y-3">
+
+  <div className="rounded-xl bg-emerald-900/80 border border-emerald-800 px-4 py-3">
+    <div className="text-xs uppercase tracking-wider font-extrabold text-emerald-400">
+      Disposal guidance
+    </div>
+
+    <p className="mt-1 text-emerald-100 font-medium">
+      {result.guidance}
+    </p>
+  </div>
+
+  <div className="rounded-xl bg-emerald-900/80 border border-emerald-800 px-4 py-3">
+    <div className="text-xs uppercase tracking-wider font-extrabold text-emerald-400">
+      Recommended action
+    </div>
+
+    <p className="mt-1 text-emerald-100 font-medium">
+      {result.action}
+    </p>
+  </div>
+
+</div>
                   <button
                     type="button"
                     onClick={getRecommendation}

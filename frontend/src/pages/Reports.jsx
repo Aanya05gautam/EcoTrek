@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api, uploadUrl } from '../api';
+import { predictWaste } from '../services/mlApi';
 import { useAuth } from '../context/AuthContext';
 import { useLocation } from 'react-router-dom';
 import Map from '../components/Map';
@@ -30,7 +31,7 @@ export default function Reports() {
     setAnalysis(workflow.analysis || null);
     setForm(prev => ({
       ...prev,
-      title: `Outdoor ${workflow.analysis?.category || 'waste'} report`,
+      title: `${workflow.analysis?.category || 'waste'} report`,
       description: `AI classified this outdoor waste as ${workflow.analysis?.category || 'Unknown'} with ${workflow.analysis?.confidence || 0}% confidence. Add scene details before submitting.`,
       aiCategory: workflow.analysis?.category || 'Unknown',
       aiConfidence: Number(workflow.analysis?.confidence) || 0,
@@ -62,32 +63,60 @@ export default function Reports() {
   };
 
   const handleFileChange = async (selectedFile) => {
-    setFile(selectedFile);
-    setErr('');
 
-    if (!selectedFile) {
-      setAnalysis(null);
-      return;
-    }
+  setFile(selectedFile);
+  setErr('');
 
-    setAnalysisLoading(true);
-    try {
-      const fd = new FormData();
-      fd.append('image', selectedFile);
-      const result = await api('/ai/identify', { method: 'POST', body: fd });
-      setAnalysis(result);
-      setForm(prev => ({
-        ...prev,
-        aiCategory: result.category || 'Unknown',
-        aiConfidence: Number(result.confidence) || 0
-      }));
-    } catch (classificationError) {
-      setAnalysis(null);
-      console.error('Image classification preview failed:', classificationError);
-    } finally {
-      setAnalysisLoading(false);
-    }
-  };
+  if (!selectedFile) {
+    setAnalysis(null);
+    return;
+  }
+
+  setAnalysisLoading(true);
+
+  try {
+
+    const result = await predictWaste(
+      selectedFile
+    );
+
+    console.log(
+      "EcoTrek ML prediction:",
+      result
+    );
+
+    setAnalysis(result);
+
+    setForm(prev => ({
+      ...prev,
+
+      aiCategory:
+        result.category || 'Unknown',
+
+      aiConfidence:
+        Number(result.confidence) || 0
+    }));
+
+  } catch (classificationError) {
+
+    setAnalysis(null);
+
+    setErr(
+      classificationError.message ||
+      "Image classification failed."
+    );
+
+    console.error(
+      "Image classification failed:",
+      classificationError
+    );
+
+  } finally {
+
+    setAnalysisLoading(false);
+
+  }
+};
 
   const submit = async (e) => {
     e.preventDefault();
