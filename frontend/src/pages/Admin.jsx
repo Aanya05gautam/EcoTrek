@@ -1,254 +1,1352 @@
-import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { api } from '../api';
-import Map from '../components/Map';
-import { useAuth } from '../context/AuthContext';
-import { Activity, AlertTriangle, CheckCircle, MapPin, ShieldAlert } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { api } from "../api";
+import Map from "../components/Map";
+import { useAuth } from "../context/AuthContext";
+
+import {
+  Activity,
+  AlertTriangle,
+  CheckCircle,
+  MapPin,
+  ShieldAlert,
+  RefreshCw,
+  Users,
+  Truck,
+  Radio,
+  Navigation,
+  Clock,
+  Layers,
+} from "lucide-react";
 
 export default function Admin() {
   const { user } = useAuth();
+
   const [reports, setReports] = useState([]);
   const [pickups, setPickups] = useState([]);
   const [hotspots, setHotspots] = useState([]);
   const [users, setUsers] = useState([]);
-  const [reportFilter, setReportFilter] = useState('All');
 
-  const load = async () => {
-    setReports(await api('/reports'));
-    setPickups(await api('/pickups'));
-    setHotspots(await api('/reports/hotspots'));
-    setUsers(await api('/auth/users'));
+  const [reportFilter, setReportFilter] = useState("All");
+  const [typeFilter, setTypeFilter] = useState("All");
+
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
+  const [updatingId, setUpdatingId] = useState(null);
+
+  // ============================================================
+  // HELPERS
+  // ============================================================
+
+  const toNumber = (value) => {
+    const number = Number(value);
+
+    return Number.isFinite(number) ? number : null;
   };
 
-  useEffect(() => {
-    if (user?.role !== 'Admin') return undefined;
-    load();
-    const refresh = setInterval(load, 5000);
-    return () => clearInterval(refresh);
-  }, [user]);
+  const formatCondition = (value) => {
+    if (!value) return "Unknown";
 
-  if (user?.role !== 'Admin') {
+    return String(value)
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  };
+
+  const normalizeReport = (report) => {
+    const lat = toNumber(report?.lat);
+    const lng = toNumber(report?.lng);
+
+    return {
+      ...report,
+      lat,
+      lng,
+      title: report?.title || "Waste Report",
+      status: report?.status || "Pending",
+      reportType: report?.reportType || "Outdoor/Public",
+      aiCategory: report?.aiCategory || "Unknown",
+      severity: report?.severity || "Medium",
+      quantity: report?.quantity || "Medium",
+      density: report?.density || "Medium",
+      hazard: report?.hazard || "None",
+    };
+  };
+
+  const normalizeHotspot = (hotspot) => {
+    const lat = toNumber(hotspot?.center?.lat);
+    const lng = toNumber(hotspot?.center?.lng);
+
+    return {
+      ...hotspot,
+      center: {
+        lat,
+        lng,
+      },
+      reportCount: Number(hotspot?.reportCount) || 0,
+      priority: hotspot?.priority || "Low",
+      severity: hotspot?.severity || "Medium",
+      quantity: hotspot?.quantity || "Medium",
+    };
+  };
+
+  // ============================================================
+  // LOAD EVERYTHING
+  // ============================================================
+
+  const load = useCallback(async (silent = false) => {
+    if (!silent) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
+
+    setError("");
+
+    try {
+      const results = await Promise.allSettled([
+        api("/reports"),
+        api("/pickups"),
+        api("/reports/hotspots"),
+        api("/auth/users"),
+      ]);
+
+      const [reportsResult, pickupsResult, hotspotsResult, usersResult] =
+        results;
+
+      if (reportsResult.status === "fulfilled") {
+        const data = Array.isArray(reportsResult.value)
+          ? reportsResult.value
+          : [];
+
+        setReports(data.map(normalizeReport));
+      } else {
+        console.error("Reports API failed:", reportsResult.reason);
+      }
+
+      if (pickupsResult.status === "fulfilled") {
+        setPickups(
+          Array.isArray(pickupsResult.value) ? pickupsResult.value : [],
+        );
+      } else {
+        console.error("Pickups API failed:", pickupsResult.reason);
+      }
+
+      if (hotspotsResult.status === "fulfilled") {
+        const data = Array.isArray(hotspotsResult.value)
+          ? hotspotsResult.value
+          : [];
+
+        setHotspots(data.map(normalizeHotspot));
+      } else {
+        console.error("Hotspots API failed:", hotspotsResult.reason);
+      }
+
+      if (usersResult.status === "fulfilled") {
+        setUsers(
+          Array.isArray(usersResult.value) ? usersResult.value : [],
+        );
+      } else {
+        console.error("Users API failed:", usersResult.reason);
+      }
+
+      const failedCount = results.filter(
+        (result) => result.status === "rejected",
+      ).length;
+
+      if (failedCount === results.length) {
+        setError(
+          "Unable to connect to the EcoTrek backend. Please make sure the backend server is running.",
+        );
+      } else if (failedCount > 0) {
+        setError(
+          "Some dashboard data could not be loaded. Available sections are still shown.",
+        );
+      }
+    } catch (err) {
+      console.error("Admin dashboard loading failed:", err);
+
+      setError(
+        err?.message ||
+          "Failed to load the admin dashboard.",
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  // ============================================================
+  // AUTO REFRESH
+  // ============================================================
+
+  useEffect(() => {
+    if (user?.role !== "Admin") {
+      return undefined;
+    }
+
+    load();
+
+    const refresh = setInterval(() => {
+      load(true);
+    }, 10000);
+
+    return () => clearInterval(refresh);
+  }, [user, load]);
+
+  // ============================================================
+  // UPDATE REPORT STATUS
+  // ============================================================
+
+  const updateReportStatus = async (id, status) => {
+    if (!id) return;
+
+    setUpdatingId(id);
+    setError("");
+
+    try {
+      await api(`/reports/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status,
+        }),
+      });
+
+      await load(true);
+    } catch (err) {
+      console.error("Report status update failed:", err);
+
+      setError(
+        err?.message ||
+          "Unable to update report status.",
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  // ============================================================
+  // UPDATE PICKUP STATUS
+  // ============================================================
+
+  const updatePickupStatus = async (id, status) => {
+    if (!id) return;
+
+    setUpdatingId(id);
+    setError("");
+
+    try {
+      await api(`/pickups/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status,
+        }),
+      });
+
+      await load(true);
+    } catch (err) {
+      console.error("Pickup status update failed:", err);
+
+      setError(
+        err?.message ||
+          "Unable to update pickup status.",
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  // ============================================================
+  // UPDATE USER ROLE
+  // ============================================================
+
+  const updateRole = async (id, role) => {
+    if (!id) return;
+
+    setUpdatingId(id);
+    setError("");
+
+    try {
+      await api(`/auth/users/${id}/role`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          role,
+        }),
+      });
+
+      const refreshedUsers = await api("/auth/users");
+
+      setUsers(
+        Array.isArray(refreshedUsers)
+          ? refreshedUsers
+          : [],
+      );
+    } catch (err) {
+      console.error("Role update failed:", err);
+
+      setError(
+        err?.message ||
+          "Unable to update user role.",
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  // ============================================================
+  // FILTER REPORTS
+  // ============================================================
+
+  const visibleReports = useMemo(() => {
+    return reports.filter((report) => {
+      const statusMatches =
+        reportFilter === "All" ||
+        report.status === reportFilter;
+
+      const typeMatches =
+        typeFilter === "All" ||
+        report.reportType === typeFilter;
+
+      return statusMatches && typeMatches;
+    });
+  }, [reports, reportFilter, typeFilter]);
+
+  // ============================================================
+  // OUTDOOR REPORTS
+  // ============================================================
+
+  const outdoorReports = useMemo(() => {
+    return reports.filter(
+      (report) =>
+        report.reportType === "Outdoor/Public",
+    );
+  }, [reports]);
+
+  // ============================================================
+  // VALID MAP REPORTS
+  // ============================================================
+
+  const reportMarkers = useMemo(() => {
+    return outdoorReports
+      .filter(
+        (report) =>
+          Number.isFinite(report.lat) &&
+          Number.isFinite(report.lng),
+      )
+      .map((report) => ({
+        ...report,
+        lat: Number(report.lat),
+        lng: Number(report.lng),
+      }));
+  }, [outdoorReports]);
+
+  // ============================================================
+  // HOTSPOT MARKERS
+  // ============================================================
+
+  const hotspotMarkers = useMemo(() => {
+    return hotspots
+      .filter(
+        (hotspot) =>
+          Number.isFinite(hotspot.center?.lat) &&
+          Number.isFinite(hotspot.center?.lng),
+      )
+      .map((hotspot, index) => ({
+        id: `hotspot-${index}`,
+        _id: `hotspot-${index}`,
+
+        lat: Number(hotspot.center.lat),
+        lng: Number(hotspot.center.lng),
+
+        title: `Hotspot Cluster ${index + 1}`,
+
+        description: `${hotspot.reportCount} report(s) · ${formatCondition(
+          hotspot.priority,
+        )} priority`,
+
+        aiCategory: "Hotspot",
+
+        status: "Pending",
+
+        severity: hotspot.severity,
+
+        quantity: hotspot.quantity,
+
+        priority: hotspot.priority,
+
+        isHotspot: true,
+      }));
+  }, [hotspots]);
+
+  // ============================================================
+  // COMBINED MAP DATA
+  // ============================================================
+
+  const mapMarkers = useMemo(() => {
+    return [
+      ...reportMarkers,
+      ...hotspotMarkers,
+    ];
+  }, [reportMarkers, hotspotMarkers]);
+
+  // ============================================================
+  // MAP CENTER
+  // ============================================================
+
+  const mapCenter = useMemo(() => {
+    if (hotspotMarkers.length > 0) {
+      return {
+        lat: hotspotMarkers[0].lat,
+        lng: hotspotMarkers[0].lng,
+      };
+    }
+
+    if (reportMarkers.length > 0) {
+      return {
+        lat: reportMarkers[0].lat,
+        lng: reportMarkers[0].lng,
+      };
+    }
+
+    return null;
+  }, [hotspotMarkers, reportMarkers]);
+
+  // ============================================================
+  // COUNTERS
+  // ============================================================
+
+  const pendingReports = reports.filter(
+    (report) => report.status === "Pending",
+  ).length;
+
+  const inProgressReports = reports.filter(
+    (report) => report.status === "In Progress",
+  ).length;
+
+  const resolvedReports = reports.filter(
+    (report) => report.status === "Resolved",
+  ).length;
+
+  const criticalReports = reports.filter(
+    (report) =>
+      report.status !== "Resolved" &&
+      ["High", "Critical"].includes(report.severity),
+  ).length;
+
+  const activeHotspots = hotspots.filter(
+    (hotspot) =>
+      hotspot.priority !== "Low",
+  ).length;
+
+  // ============================================================
+  // ACCESS CONTROL
+  // ============================================================
+
+  if (user?.role !== "Admin") {
     return (
       <div className="max-w-4xl mx-auto px-4 py-20">
-        <div className="bg-white/80 backdrop-blur-md rounded-3xl p-10 text-center border border-red-100 shadow-xl">
-          <ShieldAlert size={48} className="mx-auto text-red-500 mb-4" />
-          <h2 className="text-3xl font-extrabold text-slate-900 mb-4">RESTRICTED AUTHORITY ZONE</h2>
-          <p className="text-slate-600 font-medium text-lg">This portal is restricted to administrator accounts.</p>
-          <Link to="/admin/login" className="inline-flex mt-6 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-3 rounded-xl font-extrabold">Go to Admin Login</Link>
+        <div className="bg-white/90 backdrop-blur-md rounded-3xl p-10 text-center border border-red-100 shadow-xl">
+          <ShieldAlert
+            size={52}
+            className="mx-auto text-red-500 mb-5"
+          />
+
+          <h2 className="text-3xl font-extrabold text-slate-900 mb-4">
+            RESTRICTED AUTHORITY ZONE
+          </h2>
+
+          <p className="text-slate-600 font-medium text-lg">
+            This portal is restricted to administrator accounts.
+          </p>
+
+          <Link
+            to="/admin/login"
+            className="inline-flex mt-6 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-extrabold transition"
+          >
+            Go to Admin Login
+          </Link>
         </div>
       </div>
     );
   }
 
-  const updateR = async (id, status) => {
-    await api('/reports/' + id, { method: 'PATCH', body: JSON.stringify({ status }) });
-    load();
-  };
-
-  const updateP = async (id, status) => {
-    await api('/pickups/' + id, { method: 'PATCH', body: JSON.stringify({ status }) });
-    load();
-  };
-
-  const updateRole = async (id, role) => {
-    await api('/auth/users/' + id + '/role', { method: 'PATCH', body: JSON.stringify({ role }) });
-    setUsers(await api('/auth/users'));
-  };
-
-  const visibleReports = reportFilter === 'All'
-    ? reports
-    : reports.filter(report => report.status === reportFilter);
+  // ============================================================
+  // UI
+  // ============================================================
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-12">
-      <div className="flex items-center justify-between mb-10">
-        <div>
-          <h1 className="text-3xl font-extrabold text-emerald-950">Central Authority Engine</h1>
-          <p className="text-emerald-700/80 font-bold mt-1">SIH-25060 Compliance Dashboard</p>
-        </div>
-        <div className="px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 text-emerald-700 font-extrabold text-sm shadow-sm">
-          <Activity size={16} className="animate-pulse" />
-          SYSTEM LIVE
+    <div className="max-w-7xl mx-auto px-4 py-10">
+
+      {/* ========================================================
+          HEADER
+      ======================================================== */}
+
+      <div className="bg-emerald-950 rounded-[2rem] p-7 md:p-9 mb-8 shadow-xl border border-emerald-900 relative overflow-hidden">
+
+        <div className="absolute -top-20 -right-20 w-72 h-72 rounded-full bg-emerald-500/10 blur-3xl" />
+
+        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+
+          <div>
+            <div className="flex items-center gap-3 mb-3">
+
+              <div className="w-11 h-11 rounded-xl bg-emerald-800 border border-emerald-700 flex items-center justify-center">
+                <ShieldAlert
+                  size={22}
+                  className="text-emerald-300"
+                />
+              </div>
+
+              <span className="text-emerald-400 text-xs font-extrabold uppercase tracking-[0.18em]">
+                EcoTrek Authority Portal
+              </span>
+
+            </div>
+
+            <h1 className="text-3xl md:text-4xl font-extrabold text-white">
+              Central Waste Management
+            </h1>
+
+            <p className="text-emerald-200/80 mt-2 font-medium">
+              Monitor reports, hotspots, cleanup requests and citizen activity.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+
+            <button
+              onClick={() => load(true)}
+              disabled={refreshing}
+              className="flex items-center gap-2 px-4 py-3 rounded-xl bg-emerald-800 hover:bg-emerald-700 text-white font-bold border border-emerald-700 transition disabled:opacity-60"
+            >
+              <RefreshCw
+                size={17}
+                className={refreshing ? "animate-spin" : ""}
+              />
+
+              {refreshing ? "Refreshing..." : "Refresh"}
+            </button>
+
+            <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-emerald-900 border border-emerald-700 text-emerald-300 font-extrabold text-sm">
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+              SYSTEM LIVE
+            </div>
+
+          </div>
+
         </div>
       </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-6 border border-emerald-100 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-emerald-800 text-sm font-bold mb-1 uppercase tracking-wider">Total Incidents</p>
-            <b className="text-4xl font-extrabold text-emerald-950">{reports.length}</b>
-          </div>
-          <div className="h-12 w-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-sm">
-            <Activity size={24} />
-          </div>
-        </div>
-        
-        <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-6 border border-emerald-100 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-emerald-800 text-sm font-bold mb-1 uppercase tracking-wider">Fleet Nodes</p>
-            <b className="text-4xl font-extrabold text-emerald-950">{pickups.length}</b>
-          </div>
-          <div className="h-12 w-12 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shadow-sm">
-            <CheckCircle size={24} />
-          </div>
-        </div>
-        
-        <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-6 border border-red-100 shadow-sm flex items-center justify-between relative overflow-hidden">
-          <div className="absolute top-0 right-0 -m-4 w-24 h-24 bg-red-100/50 blur-xl rounded-full pointer-events-none"></div>
-          <div>
-            <p className="text-red-700 text-sm font-bold mb-1 uppercase tracking-wider">Critical Unresolved</p>
-            <b className="text-4xl font-extrabold text-red-600">{reports.filter(r => r.status === 'Pending').length}</b>
-          </div>
-          <div className="h-12 w-12 rounded-2xl bg-red-50 border border-red-200 flex items-center justify-center text-red-500 relative z-10 shadow-sm">
-            <AlertTriangle size={24} />
-          </div>
-        </div>
-      </div>
-      
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-        <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-6 border border-emerald-100 shadow-[0_8px_30px_rgba(6,78,59,0.04)]">
-          <h2 className="text-xl font-extrabold text-emerald-950 mb-6 flex items-center gap-2"><MapPin size={20} className="text-emerald-500"/> Geospatial Heatmap</h2>
-          <div className="h-[400px] rounded-2xl overflow-hidden border border-emerald-200 shadow-inner">
-            <Map markers={reports} position={null} setPosition={() => {}} />
-          </div>
-        </div>
-        
-        <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-6 border border-emerald-100 shadow-[0_8px_30px_rgba(6,78,59,0.04)] flex flex-col h-[480px]">
-          <div className="flex items-center justify-between gap-4 mb-6">
+
+      {/* ========================================================
+          KPI CARDS
+      ======================================================== */}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-5 mb-8">
+
+        {/* Total */}
+
+        <div className="bg-white/90 rounded-3xl p-6 border border-emerald-100 shadow-sm">
+          <div className="flex items-center justify-between">
+
             <div>
-              <h2 className="text-xl font-extrabold text-emerald-950">Incoming Citizen Requests</h2>
-              <p className="text-sm text-emerald-700/70 font-semibold mt-1">Review, triage, and dispatch submitted waste reports.</p>
+              <p className="text-xs uppercase tracking-wider text-emerald-700 font-extrabold">
+                Total Reports
+              </p>
+
+              <p className="text-4xl font-extrabold text-emerald-950 mt-2">
+                {reports.length}
+              </p>
             </div>
-            <select className="bg-white border border-emerald-200 text-sm rounded-lg px-3 py-2 text-emerald-900 font-bold" value={reportFilter} onChange={e => setReportFilter(e.target.value)}>
-              <option>All</option>
-              <option>Pending</option>
-              <option>In Progress</option>
-              <option>Resolved</option>
-            </select>
-          </div>
-          <div className="overflow-x-auto flex-grow custom-scrollbar pr-2">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="border-b border-emerald-100 text-sm font-extrabold text-emerald-800 uppercase tracking-wider bg-emerald-50/50">
-                  <th className="py-3 px-3 rounded-tl-lg">Request</th>
-                  <th className="py-3 px-2">Mode / AI</th>
-                  <th className="py-3 px-2">Priority</th>
-                  <th className="py-3 px-3 rounded-tr-lg">Mutate</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-emerald-50">
-                {visibleReports.map(r => (
-                  <tr key={r._id || r.id} className="hover:bg-emerald-50/50 transition-colors">
-                    <td className="py-4 px-3">
-                      <div className="font-bold text-emerald-900">{r.title}</div>
-                      <div className="text-xs text-slate-500 mt-1">{r.address || 'GPS coordinates submitted'}</div>
-                    </td>
-                    <td className="py-4 px-2">
-                      <div className="text-xs font-bold text-slate-500">{r.reportType || 'Outdoor/Public'}</div>
-                      <span className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold px-2.5 py-1 rounded-md shadow-sm inline-block mt-1">{r.aiCategory}</span>
-                    </td>
-                    <td className="py-4 px-2">
-                      <div className="text-xs font-extrabold text-red-700">{r.priority || 'Low'}</div>
-                      <div className="text-xs text-slate-500">{r.severity || 'Medium'} · {r.quantity || 'Medium'} quantity · {r.density || 'Medium'} density · {r.hazard || 'None'} hazard</div>
-                    </td>
-                    <td className="py-4 px-3">
-                      <select 
-                        className="bg-white border border-emerald-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-emerald-900 font-bold shadow-sm"
-                        value={r.status} 
-                        onChange={e => updateR(r._id || r.id, e.target.value)}
-                      >
-                        <option>Pending</option>
-                        <option>In Progress</option>
-                        <option>Resolved</option>
-                      </select>
-                    </td>
-                  </tr>
-                ))}
-                {visibleReports.length === 0 && <tr><td colSpan="4" className="py-10 text-center text-slate-500 font-semibold">No requests in this queue.</td></tr>}
-              </tbody>
-            </table>
+
+            <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
+              <Activity size={23} />
+            </div>
+
           </div>
         </div>
+
+        {/* Pending */}
+
+        <div className="bg-white/90 rounded-3xl p-6 border border-orange-100 shadow-sm">
+          <div className="flex items-center justify-between">
+
+            <div>
+              <p className="text-xs uppercase tracking-wider text-orange-700 font-extrabold">
+                Pending
+              </p>
+
+              <p className="text-4xl font-extrabold text-orange-700 mt-2">
+                {pendingReports}
+              </p>
+            </div>
+
+            <div className="w-12 h-12 rounded-2xl bg-orange-50 border border-orange-100 flex items-center justify-center text-orange-600">
+              <Clock size={23} />
+            </div>
+
+          </div>
+        </div>
+
+        {/* In progress */}
+
+        <div className="bg-white/90 rounded-3xl p-6 border border-blue-100 shadow-sm">
+          <div className="flex items-center justify-between">
+
+            <div>
+              <p className="text-xs uppercase tracking-wider text-blue-700 font-extrabold">
+                In Progress
+              </p>
+
+              <p className="text-4xl font-extrabold text-blue-700 mt-2">
+                {inProgressReports}
+              </p>
+            </div>
+
+            <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+              <Truck size={23} />
+            </div>
+
+          </div>
+        </div>
+
+        {/* Hotspots */}
+
+        <div className="bg-white/90 rounded-3xl p-6 border border-red-100 shadow-sm">
+          <div className="flex items-center justify-between">
+
+            <div>
+              <p className="text-xs uppercase tracking-wider text-red-700 font-extrabold">
+                Active Hotspots
+              </p>
+
+              <p className="text-4xl font-extrabold text-red-700 mt-2">
+                {activeHotspots}
+              </p>
+            </div>
+
+            <div className="w-12 h-12 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center text-red-600">
+              <MapPin size={23} />
+            </div>
+
+          </div>
+        </div>
+
+        {/* Users */}
+
+        <div className="bg-white/90 rounded-3xl p-6 border border-emerald-100 shadow-sm">
+          <div className="flex items-center justify-between">
+
+            <div>
+              <p className="text-xs uppercase tracking-wider text-emerald-700 font-extrabold">
+                Users
+              </p>
+
+              <p className="text-4xl font-extrabold text-emerald-950 mt-2">
+                {users.length}
+              </p>
+            </div>
+
+            <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600">
+              <Users size={23} />
+            </div>
+
+          </div>
+        </div>
+
       </div>
 
-      <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-6 border border-emerald-100 shadow-sm mb-8">
-        <h2 className="text-xl font-extrabold text-emerald-950 mb-5">Prioritized Waste Hotspots</h2>
-        {hotspots.length === 0 ? (
-          <p className="text-slate-500 font-medium">No unresolved report clusters yet.</p>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {hotspots.map((hotspot, index) => (
-              <div key={`${hotspot.center.lat}-${hotspot.center.lng}-${index}`} className="border border-emerald-100 rounded-2xl p-4 bg-emerald-50/50">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="font-extrabold text-emerald-950">Cluster {index + 1}</span>
-                  <span className="text-xs font-extrabold uppercase text-red-700 bg-red-50 border border-red-100 px-2 py-1 rounded-md">{hotspot.priority}</span>
+      {/* ========================================================
+          MAP + HOTSPOT SUMMARY
+      ======================================================== */}
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mb-8">
+
+        {/* MAP */}
+
+        <div className="xl:col-span-2 bg-white/90 rounded-3xl p-6 border border-emerald-100 shadow-sm">
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
+
+            <div>
+              <div className="flex items-center gap-2">
+                <MapPin
+                  size={21}
+                  className="text-emerald-500"
+                />
+
+                <h2 className="text-xl font-extrabold text-emerald-950">
+                  Live Waste Hotspot Map
+                </h2>
+              </div>
+
+              <p className="text-sm text-emerald-700/70 font-semibold mt-1">
+                Outdoor reports and detected hotspot clusters
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 text-xs font-bold">
+
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                Reports
+              </span>
+
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                Hotspots
+              </span>
+
+            </div>
+
+          </div>
+
+          <div className="h-[460px] rounded-2xl overflow-hidden border border-emerald-200 shadow-inner relative">
+
+            {loading ? (
+              <div className="absolute inset-0 z-20 bg-emerald-50/80 flex items-center justify-center">
+                <div className="flex items-center gap-3 text-emerald-700 font-extrabold">
+                  <RefreshCw
+                    size={20}
+                    className="animate-spin"
+                  />
+                  Loading map...
                 </div>
-                <p className="text-sm text-emerald-800 font-semibold mt-3">{hotspot.reportCount} report(s) · {hotspot.severity} severity · {hotspot.quantity} quantity</p>
-                <p className="text-xs text-slate-500 mt-2">{hotspot.center.lat.toFixed(5)}, {hotspot.center.lng.toFixed(5)}</p>
               </div>
-            ))}
+            ) : null}
+
+            <Map
+              position={mapCenter}
+              setPosition={() => {}}
+              markers={mapMarkers}
+            />
+
           </div>
-        )}
-      </div>
-      
-      <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-8 border border-blue-100 shadow-[0_8px_30px_rgba(37,99,235,0.04)]">
-        <h2 className="text-xl font-extrabold text-slate-800 mb-6">Logistics / Fleet Assignment</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {pickups.map(p => (
-            <div key={p._id || p.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between hover:border-blue-300 transition-colors">
-              <div>
-                <b className="text-blue-700 font-extrabold text-lg mb-1 block">{p.wasteType}</b>
-                <p className="text-slate-600 text-sm font-semibold line-clamp-2 mb-4">{p.address}</p>
-              </div>
-              <div className="flex items-center justify-between border-t border-slate-100 pt-4 mt-2">
-                <span className={`px-3 py-1 rounded-md text-xs font-bold border shadow-sm ${p.status === 'Completed' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>{p.status}</span>
-                <select 
-                  className="bg-white border border-slate-200 text-xs rounded-lg px-2 py-2 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-slate-800 font-bold shadow-sm"
-                  value={p.status} 
-                  onChange={e => updateP(p._id || p.id, e.target.value)}
-                >
-                  <option>Requested</option>
-                  <option>Assigned</option>
-                  <option>Completed</option>
-                </select>
-              </div>
+
+          <div className="grid grid-cols-3 gap-3 mt-4">
+
+            <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3">
+              <p className="text-[10px] uppercase tracking-wider text-emerald-600 font-extrabold">
+                Outdoor Reports
+              </p>
+
+              <p className="text-xl font-extrabold text-emerald-950 mt-1">
+                {outdoorReports.length}
+              </p>
             </div>
-          ))}
-          {pickups.length === 0 && <p className="text-slate-500 font-medium">No pickup dispatches open.</p>}
+
+            <div className="bg-red-50 border border-red-100 rounded-xl p-3">
+              <p className="text-[10px] uppercase tracking-wider text-red-600 font-extrabold">
+                Hotspot Clusters
+              </p>
+
+              <p className="text-xl font-extrabold text-red-700 mt-1">
+                {hotspots.length}
+              </p>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+              <p className="text-[10px] uppercase tracking-wider text-slate-500 font-extrabold">
+                Mapped Points
+              </p>
+
+              <p className="text-xl font-extrabold text-slate-800 mt-1">
+                {mapMarkers.length}
+              </p>
+            </div>
+
+          </div>
+
         </div>
+
+        {/* HOTSPOTS */}
+
+        <div className="bg-white/90 rounded-3xl p-6 border border-emerald-100 shadow-sm">
+
+          <div className="flex items-center justify-between mb-5">
+
+            <div>
+              <h2 className="text-xl font-extrabold text-emerald-950">
+                Priority Hotspots
+              </h2>
+
+              <p className="text-sm text-emerald-700/70 font-semibold mt-1">
+                Clustered unresolved reports
+              </p>
+            </div>
+
+            <Layers
+              size={21}
+              className="text-emerald-500"
+            />
+
+          </div>
+
+          <div className="space-y-3 max-h-[460px] overflow-y-auto pr-1 custom-scrollbar">
+
+            {hotspots.length === 0 ? (
+              <div className="border border-dashed border-emerald-200 bg-emerald-50 rounded-2xl p-8 text-center">
+                <MapPin
+                  size={28}
+                  className="mx-auto text-emerald-400 mb-3"
+                />
+
+                <p className="text-emerald-700 font-extrabold">
+                  No active hotspot clusters
+                </p>
+
+                <p className="text-xs text-emerald-600/70 mt-1 font-semibold">
+                  New outdoor reports will appear here when clusters are detected.
+                </p>
+              </div>
+            ) : (
+              hotspots.map((hotspot, index) => (
+
+                <div
+                  key={`hotspot-${index}`}
+                  className="border border-emerald-100 rounded-2xl p-4 bg-emerald-50/50 hover:bg-emerald-50 transition"
+                >
+
+                  <div className="flex items-center justify-between gap-3">
+
+                    <span className="font-extrabold text-emerald-950">
+                      Hotspot #{index + 1}
+                    </span>
+
+                    <span className="text-[10px] uppercase font-extrabold text-red-700 bg-red-50 border border-red-100 px-2 py-1 rounded-md">
+                      {formatCondition(hotspot.priority)}
+                    </span>
+
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 mt-3">
+
+                    <div>
+                      <p className="text-[10px] uppercase text-slate-500 font-extrabold">
+                        Reports
+                      </p>
+
+                      <p className="font-extrabold text-emerald-900">
+                        {hotspot.reportCount}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-[10px] uppercase text-slate-500 font-extrabold">
+                        Severity
+                      </p>
+
+                      <p className="font-extrabold text-emerald-900">
+                        {formatCondition(hotspot.severity)}
+                      </p>
+                    </div>
+
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-3 text-xs text-slate-500 font-semibold">
+                    <Navigation size={13} />
+
+                    {Number.isFinite(hotspot.center.lat) &&
+                    Number.isFinite(hotspot.center.lng)
+                      ? `${hotspot.center.lat.toFixed(5)}, ${hotspot.center.lng.toFixed(5)}`
+                      : "Coordinates unavailable"}
+                  </div>
+
+                </div>
+
+              ))
+            )}
+
+          </div>
+
+        </div>
+
       </div>
 
-      <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-6 border border-emerald-100 shadow-sm mt-8">
-        <div className="flex items-center justify-between gap-4 mb-5">
+      {/* ========================================================
+          REPORT QUEUE
+      ======================================================== */}
+
+      <div className="bg-white/90 rounded-3xl p-6 border border-emerald-100 shadow-sm mb-8">
+
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
+
           <div>
-            <h2 className="text-xl font-extrabold text-emerald-950">User and Authority Management</h2>
-            <p className="text-sm text-emerald-700/70 font-semibold mt-1">Manage multiple citizen and administrator accounts from the portal.</p>
+            <h2 className="text-xl font-extrabold text-emerald-950">
+              Incoming Citizen Reports
+            </h2>
+
+            <p className="text-sm text-emerald-700/70 font-semibold mt-1">
+              Review, prioritize and update waste incidents.
+            </p>
           </div>
-          <span className="text-sm font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-lg">{users.length} accounts</span>
+
+          <div className="flex flex-wrap gap-3">
+
+            <select
+              className="bg-white border border-emerald-200 text-sm rounded-xl px-3 py-2.5 text-emerald-900 font-bold"
+              value={typeFilter}
+              onChange={(e) =>
+                setTypeFilter(e.target.value)
+              }
+            >
+              <option value="All">
+                All Modes
+              </option>
+
+              <option value="Outdoor/Public">
+                Outdoor/Public
+              </option>
+
+              <option value="Household">
+                Household
+              </option>
+            </select>
+
+            <select
+              className="bg-white border border-emerald-200 text-sm rounded-xl px-3 py-2.5 text-emerald-900 font-bold"
+              value={reportFilter}
+              onChange={(e) =>
+                setReportFilter(e.target.value)
+              }
+            >
+              <option value="All">
+                All Status
+              </option>
+
+              <option value="Pending">
+                Pending
+              </option>
+
+              <option value="In Progress">
+                In Progress
+              </option>
+
+              <option value="Resolved">
+                Resolved
+              </option>
+            </select>
+
+          </div>
+
         </div>
+
         <div className="overflow-x-auto">
+
           <table className="w-full text-left">
-            <thead className="text-xs uppercase tracking-wider text-emerald-800 bg-emerald-50">
-              <tr><th className="p-3">User</th><th className="p-3">Email</th><th className="p-3">Eco-points</th><th className="p-3">Access role</th></tr>
+
+            <thead>
+              <tr className="border-b border-emerald-100 bg-emerald-50/60 text-xs uppercase tracking-wider text-emerald-800 font-extrabold">
+
+                <th className="p-3">
+                  Report
+                </th>
+
+                <th className="p-3">
+                  Location
+                </th>
+
+                <th className="p-3">
+                  Model
+                </th>
+
+                <th className="p-3">
+                  Priority
+                </th>
+
+                <th className="p-3">
+                  Status
+                </th>
+
+              </tr>
             </thead>
+
             <tbody className="divide-y divide-emerald-50">
-              {users.map(account => (
-                <tr key={account._id || account.id}>
-                  <td className="p-3 font-bold text-emerald-950">{account.name}</td>
-                  <td className="p-3 text-sm text-slate-600">{account.email}</td>
-                  <td className="p-3 text-sm font-semibold text-emerald-700">{account.ecoPoints || 0}</td>
-                  <td className="p-3">
-                    <select className="border border-emerald-200 rounded-lg px-3 py-2 text-sm font-bold text-emerald-900" value={account.role} onChange={event => updateRole(account._id || account.id, event.target.value)}>
-                      <option>Citizen</option>
-                      <option>Admin</option>
-                    </select>
+
+              {visibleReports.map((report) => {
+
+                const id =
+                  report._id || report.id;
+
+                return (
+                  <tr
+                    key={id}
+                    className="hover:bg-emerald-50/40 transition"
+                  >
+
+                    <td className="p-4">
+
+                      <div className="font-extrabold text-emerald-950">
+                        {report.title}
+                      </div>
+
+                      <div className="text-xs text-slate-500 mt-1">
+                        {formatCondition(report.reportType)}
+                      </div>
+
+                    </td>
+
+                    <td className="p-4">
+
+                      <div className="text-sm font-semibold text-slate-700 max-w-[220px]">
+                        {report.address ||
+                          "GPS coordinates submitted"}
+                      </div>
+
+                      {Number.isFinite(report.lat) &&
+                        Number.isFinite(report.lng) && (
+                          <div className="text-[11px] text-slate-400 mt-1">
+                            {report.lat.toFixed(5)},{" "}
+                            {report.lng.toFixed(5)}
+                          </div>
+                        )}
+
+                    </td>
+
+                    <td className="p-4">
+
+                      <span className="inline-flex px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-extrabold capitalize">
+                        {formatCondition(
+                          report.aiCategory,
+                        )}
+                      </span>
+
+                      {report.aiConfidence !== undefined && (
+                        <div className="text-[11px] text-slate-500 mt-1">
+                          Model confidence:{" "}
+                          {report.aiConfidence}%
+                        </div>
+                      )}
+
+                    </td>
+
+                    <td className="p-4">
+
+                      <div className="font-extrabold text-red-700 text-sm">
+                        {report.priority ||
+                          report.severity ||
+                          "Low"}
+                      </div>
+
+                      <div className="text-[11px] text-slate-500 mt-1">
+                        {report.quantity} quantity ·{" "}
+                        {report.density} density
+                      </div>
+
+                    </td>
+
+                    <td className="p-4">
+
+                      <select
+                        className="bg-white border border-emerald-200 text-sm rounded-xl px-3 py-2 text-emerald-900 font-bold disabled:opacity-50"
+                        value={report.status}
+                        disabled={updatingId === id}
+                        onChange={(e) =>
+                          updateReportStatus(
+                            id,
+                            e.target.value,
+                          )
+                        }
+                      >
+
+                        <option value="Pending">
+                          Pending
+                        </option>
+
+                        <option value="In Progress">
+                          In Progress
+                        </option>
+
+                        <option value="Resolved">
+                          Resolved
+                        </option>
+
+                      </select>
+
+                    </td>
+
+                  </tr>
+                );
+              })}
+
+              {visibleReports.length === 0 && (
+                <tr>
+                  <td
+                    colSpan="5"
+                    className="py-12 text-center text-slate-500 font-semibold"
+                  >
+                    No reports match the selected filters.
                   </td>
                 </tr>
-              ))}
+              )}
+
             </tbody>
+
           </table>
+
         </div>
+
       </div>
+
+      {/* ========================================================
+          STATUS OVERVIEW
+      ======================================================== */}
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
+
+        <div className="bg-orange-50 border border-orange-100 rounded-2xl p-5">
+          <p className="text-xs uppercase font-extrabold text-orange-700 tracking-wider">
+            Pending Resolution
+          </p>
+
+          <p className="text-3xl font-extrabold text-orange-700 mt-2">
+            {pendingReports}
+          </p>
+        </div>
+
+        <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5">
+          <p className="text-xs uppercase font-extrabold text-blue-700 tracking-wider">
+            Cleanup In Progress
+          </p>
+
+          <p className="text-3xl font-extrabold text-blue-700 mt-2">
+            {inProgressReports}
+          </p>
+        </div>
+
+        <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-5">
+          <p className="text-xs uppercase font-extrabold text-emerald-700 tracking-wider">
+            Resolved Reports
+          </p>
+
+          <p className="text-3xl font-extrabold text-emerald-700 mt-2">
+            {resolvedReports}
+          </p>
+        </div>
+
+      </div>
+
+      {/* ========================================================
+          FLEET / PICKUPS
+      ======================================================== */}
+
+      <div className="bg-white/90 rounded-3xl p-6 border border-blue-100 shadow-sm mb-8">
+
+        <div className="flex items-center justify-between mb-6">
+
+          <div>
+            <h2 className="text-xl font-extrabold text-slate-800">
+              Logistics / Fleet Assignment
+            </h2>
+
+            <p className="text-sm text-slate-500 font-semibold mt-1">
+              Track cleanup collection requests.
+            </p>
+          </div>
+
+          <Truck
+            size={22}
+            className="text-blue-600"
+          />
+
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+
+          {pickups.map((pickup) => {
+
+            const id =
+              pickup._id || pickup.id;
+
+            return (
+              <div
+                key={id}
+                className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"
+              >
+
+                <div className="flex items-center justify-between gap-3">
+
+                  <span className="font-extrabold text-blue-700">
+                    {pickup.wasteType ||
+                      "Waste Collection"}
+                  </span>
+
+                  <span className="text-xs font-bold text-slate-500">
+                    {pickup.status ||
+                      "Requested"}
+                  </span>
+
+                </div>
+
+                <p className="text-sm text-slate-600 font-semibold mt-3 line-clamp-2">
+                  {pickup.address ||
+                    "Location unavailable"}
+                </p>
+
+                <div className="mt-4 pt-4 border-t border-slate-100">
+
+                  <select
+                    className="w-full bg-white border border-slate-200 text-xs rounded-xl px-3 py-2.5 text-slate-800 font-bold disabled:opacity-50"
+                    value={
+                      pickup.status ||
+                      "Requested"
+                    }
+                    disabled={
+                      updatingId === id
+                    }
+                    onChange={(e) =>
+                      updatePickupStatus(
+                        id,
+                        e.target.value,
+                      )
+                    }
+                  >
+
+                    <option value="Requested">
+                      Requested
+                    </option>
+
+                    <option value="Assigned">
+                      Assigned
+                    </option>
+
+                    <option value="Completed">
+                      Completed
+                    </option>
+
+                  </select>
+
+                </div>
+
+              </div>
+            );
+          })}
+
+          {pickups.length === 0 && (
+            <div className="md:col-span-2 lg:col-span-3 border border-dashed border-slate-200 rounded-2xl p-10 text-center text-slate-500 font-semibold">
+              No cleanup dispatches available.
+            </div>
+          )}
+
+        </div>
+
+      </div>
+
+      {/* ========================================================
+          USERS
+      ======================================================== */}
+
+      <div className="bg-white/90 rounded-3xl p-6 border border-emerald-100 shadow-sm">
+
+        <div className="flex items-center justify-between mb-6">
+
+          <div>
+            <h2 className="text-xl font-extrabold text-emerald-950">
+              User & Authority Management
+            </h2>
+
+            <p className="text-sm text-emerald-700/70 font-semibold mt-1">
+              Manage citizen and administrator access.
+            </p>
+          </div>
+
+          <span className="px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm font-extrabold">
+            {users.length} accounts
+          </span>
+
+        </div>
+
+        <div className="overflow-x-auto">
+
+          <table className="w-full text-left">
+
+            <thead>
+              <tr className="bg-emerald-50 text-xs uppercase tracking-wider text-emerald-800 font-extrabold">
+
+                <th className="p-3">
+                  User
+                </th>
+
+                <th className="p-3">
+                  Email
+                </th>
+
+                <th className="p-3">
+                  Eco Points
+                </th>
+
+                <th className="p-3">
+                  Access Role
+                </th>
+
+              </tr>
+            </thead>
+
+            <tbody className="divide-y divide-emerald-50">
+
+              {users.map((account) => {
+
+                const id =
+                  account._id ||
+                  account.id;
+
+                return (
+                  <tr key={id}>
+
+                    <td className="p-3 font-bold text-emerald-950">
+                      {account.name ||
+                        "Unknown User"}
+                    </td>
+
+                    <td className="p-3 text-sm text-slate-600">
+                      {account.email}
+                    </td>
+
+                    <td className="p-3 text-sm font-extrabold text-emerald-700">
+                      {account.ecoPoints || 0}
+                    </td>
+
+                    <td className="p-3">
+
+                      <select
+                        className="border border-emerald-200 rounded-xl px-3 py-2 text-sm font-bold text-emerald-900 disabled:opacity-50"
+                        value={
+                          account.role ||
+                          "Citizen"
+                        }
+                        disabled={
+                          updatingId === id
+                        }
+                        onChange={(event) =>
+                          updateRole(
+                            id,
+                            event.target.value,
+                          )
+                        }
+                      >
+
+                        <option value="Citizen">
+                          Citizen
+                        </option>
+
+                        <option value="Admin">
+                          Admin
+                        </option>
+
+                      </select>
+
+                    </td>
+
+                  </tr>
+                );
+              })}
+
+            </tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+
     </div>
   );
 }

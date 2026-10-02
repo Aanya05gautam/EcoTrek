@@ -1,5 +1,6 @@
 import React from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { api } from "../api";
 
 import {
   ArrowLeft,
@@ -238,6 +239,83 @@ export default function Recommendation() {
       : material.toLowerCase() === "trash"
       ? "Keep non-recyclable waste separate from recyclable materials."
       : "Follow these steps to handle this material responsibly.";
+
+      const handleExcessWasteReport = async () => {
+  if (!navigator.geolocation) {
+    alert("Location access is required to report excess waste.");
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    async (position) => {
+      try {
+        const formData = new FormData();
+
+        formData.append(
+          "title",
+          `Excess Household Waste - ${material}`
+        );
+
+        formData.append(
+          "description",
+          `User reported an excessive quantity of household waste. The model identified the waste as ${material} with ${confidence.toFixed(
+            2
+          )}% confidence.`
+        );
+
+        formData.append("reportType", "Household");
+        formData.append("quantity", "High");
+        formData.append("density", "High");
+        formData.append("hazard", category === "Hazardous" ? "Hazardous" : "None");
+        formData.append("severity", "High");
+
+        formData.append("aiCategory", category);
+        formData.append("aiConfidence", confidence);
+
+        let address = "";
+
+try {
+  const response = await fetch(
+    `https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.coords.latitude}&lon=${position.coords.longitude}`
+  );
+
+  const locationData = await response.json();
+  address = locationData.display_name || "";
+} catch (error) {
+  console.error("Address lookup failed:", error);
+}
+
+formData.append("address", address);
+formData.append("lat", position.coords.latitude);
+formData.append("lng", position.coords.longitude);
+       
+
+        if (workflow.file) {
+          formData.append("image", workflow.file);
+        }
+
+        await api("/reports", {
+          method: "POST",
+          body: formData,
+        });
+
+        alert(
+          "Excess waste report created successfully. The Admin team can now see it."
+        );
+
+        navigate("/reports");
+      } catch (error) {
+        console.error("Excess waste report failed:", error);
+        alert("Could not create the report. Please try again.");
+      }
+    },
+    () => {
+      alert(
+        "Please allow location access so we can send the waste report to the correct area."
+      );
+    }
+  );
+};
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-12">
@@ -603,6 +681,14 @@ export default function Recommendation() {
             >
               Classify another item
             </button>
+
+            <button
+  type="button"
+  onClick={handleExcessWasteReport}
+  className="mt-3 w-full rounded-xl border-2 border-amber-400 bg-amber-50 px-5 py-3 text-amber-800 font-extrabold hover:bg-amber-100 transition"
+>
+  ⚠️ Report Excess Waste
+</button>
 
           </div>
 

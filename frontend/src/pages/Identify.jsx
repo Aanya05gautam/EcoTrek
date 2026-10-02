@@ -210,7 +210,7 @@ export default function Identify() {
               >
                 {loading ? (
                   <span className="animate-pulse">
-                    Processing via AI Authority Node...
+                    Processing via Model Nodes...
                   </span>
                 ) : (
                   <>
@@ -250,7 +250,7 @@ export default function Identify() {
                       </div>
 
                       <div className="text-emerald-300 font-bold text-sm mt-1">
-                        AI Confidence: {result.confidence}%
+                         Confidence: {result.confidence}%
                       </div>
                     </div>
                   </div>
@@ -298,7 +298,7 @@ export default function Identify() {
                     </div>
                     <div>
                       <div className="text-xs font-extrabold uppercase tracking-wider text-emerald-400">
-                        Gemini recommendation
+                        Recommendation
                       </div>
                       <h3 className="text-2xl font-extrabold text-white">
                         {recommendation.headline || "Your waste plan"}
