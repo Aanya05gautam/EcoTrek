@@ -9,7 +9,7 @@ import Identify from "./pages/Identify";
 import Recommendation from "./pages/Recommendation";
 import Reports from "./pages/Reports";
 import Admin from "./pages/Admin";
-import Driver from "./pages/Driver";
+import ReportDetails from "./pages/ReportDetails";
 import AdminLogin from "./pages/AdminLogin";
 
 function App() {
@@ -24,8 +24,8 @@ function App() {
           <Route path="/recommendation" element={<Recommendation />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/admin/report/:id" element={<ReportDetails />} />
           <Route path="/admin/login" element={<AdminLogin />} />
-          <Route path="/driver" element={<Driver />} />
         </Routes>
       </main>
 

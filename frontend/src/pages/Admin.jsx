@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import Map from "../components/Map";
 import { useAuth } from "../context/AuthContext";
@@ -21,7 +21,7 @@ import {
 
 export default function Admin() {
   const { user } = useAuth();
-
+  const navigate = useNavigate();
   const [reports, setReports] = useState([]);
   const [pickups, setPickups] = useState([]);
   const [hotspots, setHotspots] = useState([]);
@@ -142,9 +142,7 @@ export default function Admin() {
       }
 
       if (usersResult.status === "fulfilled") {
-        setUsers(
-          Array.isArray(usersResult.value) ? usersResult.value : [],
-        );
+        setUsers(Array.isArray(usersResult.value) ? usersResult.value : []);
       } else {
         console.error("Users API failed:", usersResult.reason);
       }
@@ -165,10 +163,7 @@ export default function Admin() {
     } catch (err) {
       console.error("Admin dashboard loading failed:", err);
 
-      setError(
-        err?.message ||
-          "Failed to load the admin dashboard.",
-      );
+      setError(err?.message || "Failed to load the admin dashboard.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -215,10 +210,7 @@ export default function Admin() {
     } catch (err) {
       console.error("Report status update failed:", err);
 
-      setError(
-        err?.message ||
-          "Unable to update report status.",
-      );
+      setError(err?.message || "Unable to update report status.");
     } finally {
       setUpdatingId(null);
     }
@@ -246,10 +238,7 @@ export default function Admin() {
     } catch (err) {
       console.error("Pickup status update failed:", err);
 
-      setError(
-        err?.message ||
-          "Unable to update pickup status.",
-      );
+      setError(err?.message || "Unable to update pickup status.");
     } finally {
       setUpdatingId(null);
     }
@@ -275,18 +264,11 @@ export default function Admin() {
 
       const refreshedUsers = await api("/auth/users");
 
-      setUsers(
-        Array.isArray(refreshedUsers)
-          ? refreshedUsers
-          : [],
-      );
+      setUsers(Array.isArray(refreshedUsers) ? refreshedUsers : []);
     } catch (err) {
       console.error("Role update failed:", err);
 
-      setError(
-        err?.message ||
-          "Unable to update user role.",
-      );
+      setError(err?.message || "Unable to update user role.");
     } finally {
       setUpdatingId(null);
     }
@@ -299,12 +281,10 @@ export default function Admin() {
   const visibleReports = useMemo(() => {
     return reports.filter((report) => {
       const statusMatches =
-        reportFilter === "All" ||
-        report.status === reportFilter;
+        reportFilter === "All" || report.status === reportFilter;
 
       const typeMatches =
-        typeFilter === "All" ||
-        report.reportType === typeFilter;
+        typeFilter === "All" || report.reportType === typeFilter;
 
       return statusMatches && typeMatches;
     });
@@ -315,10 +295,7 @@ export default function Admin() {
   // ============================================================
 
   const outdoorReports = useMemo(() => {
-    return reports.filter(
-      (report) =>
-        report.reportType === "Outdoor/Public",
-    );
+    return reports.filter((report) => report.reportType === "Outdoor/Public");
   }, [reports]);
 
   // ============================================================
@@ -328,9 +305,7 @@ export default function Admin() {
   const reportMarkers = useMemo(() => {
     return outdoorReports
       .filter(
-        (report) =>
-          Number.isFinite(report.lat) &&
-          Number.isFinite(report.lng),
+        (report) => Number.isFinite(report.lat) && Number.isFinite(report.lng),
       )
       .map((report) => ({
         ...report,
@@ -382,10 +357,7 @@ export default function Admin() {
   // ============================================================
 
   const mapMarkers = useMemo(() => {
-    return [
-      ...reportMarkers,
-      ...hotspotMarkers,
-    ];
+    return [...reportMarkers, ...hotspotMarkers];
   }, [reportMarkers, hotspotMarkers]);
 
   // ============================================================
@@ -433,8 +405,7 @@ export default function Admin() {
   ).length;
 
   const activeHotspots = hotspots.filter(
-    (hotspot) =>
-      hotspot.priority !== "Low",
+    (hotspot) => hotspot.priority !== "Low",
   ).length;
 
   // ============================================================
@@ -445,10 +416,7 @@ export default function Admin() {
     return (
       <div className="max-w-4xl mx-auto px-4 py-20">
         <div className="bg-white/90 backdrop-blur-md rounded-3xl p-10 text-center border border-red-100 shadow-xl">
-          <ShieldAlert
-            size={52}
-            className="mx-auto text-red-500 mb-5"
-          />
+          <ShieldAlert size={52} className="mx-auto text-red-500 mb-5" />
 
           <h2 className="text-3xl font-extrabold text-slate-900 mb-4">
             RESTRICTED AUTHORITY ZONE
@@ -475,31 +443,23 @@ export default function Admin() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-10">
-
       {/* ========================================================
           HEADER
       ======================================================== */}
 
       <div className="bg-emerald-950 rounded-[2rem] p-7 md:p-9 mb-8 shadow-xl border border-emerald-900 relative overflow-hidden">
-
         <div className="absolute -top-20 -right-20 w-72 h-72 rounded-full bg-emerald-500/10 blur-3xl" />
 
         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-
           <div>
             <div className="flex items-center gap-3 mb-3">
-
               <div className="w-11 h-11 rounded-xl bg-emerald-800 border border-emerald-700 flex items-center justify-center">
-                <ShieldAlert
-                  size={22}
-                  className="text-emerald-300"
-                />
+                <ShieldAlert size={22} className="text-emerald-300" />
               </div>
 
               <span className="text-emerald-400 text-xs font-extrabold uppercase tracking-[0.18em]">
                 EcoTrek Authority Portal
               </span>
-
             </div>
 
             <h1 className="text-3xl md:text-4xl font-extrabold text-white">
@@ -512,7 +472,6 @@ export default function Admin() {
           </div>
 
           <div className="flex items-center gap-3">
-
             <button
               onClick={() => load(true)}
               disabled={refreshing}
@@ -530,9 +489,7 @@ export default function Admin() {
               <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
               SYSTEM LIVE
             </div>
-
           </div>
-
         </div>
       </div>
 
@@ -541,12 +498,10 @@ export default function Admin() {
       ======================================================== */}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-5 mb-8">
-
         {/* Total */}
 
         <div className="bg-white/90 rounded-3xl p-6 border border-emerald-100 shadow-sm">
           <div className="flex items-center justify-between">
-
             <div>
               <p className="text-xs uppercase tracking-wider text-emerald-700 font-extrabold">
                 Total Reports
@@ -560,7 +515,6 @@ export default function Admin() {
             <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
               <Activity size={23} />
             </div>
-
           </div>
         </div>
 
@@ -568,7 +522,6 @@ export default function Admin() {
 
         <div className="bg-white/90 rounded-3xl p-6 border border-orange-100 shadow-sm">
           <div className="flex items-center justify-between">
-
             <div>
               <p className="text-xs uppercase tracking-wider text-orange-700 font-extrabold">
                 Pending
@@ -582,7 +535,6 @@ export default function Admin() {
             <div className="w-12 h-12 rounded-2xl bg-orange-50 border border-orange-100 flex items-center justify-center text-orange-600">
               <Clock size={23} />
             </div>
-
           </div>
         </div>
 
@@ -590,7 +542,6 @@ export default function Admin() {
 
         <div className="bg-white/90 rounded-3xl p-6 border border-blue-100 shadow-sm">
           <div className="flex items-center justify-between">
-
             <div>
               <p className="text-xs uppercase tracking-wider text-blue-700 font-extrabold">
                 In Progress
@@ -604,7 +555,6 @@ export default function Admin() {
             <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
               <Truck size={23} />
             </div>
-
           </div>
         </div>
 
@@ -612,7 +562,6 @@ export default function Admin() {
 
         <div className="bg-white/90 rounded-3xl p-6 border border-red-100 shadow-sm">
           <div className="flex items-center justify-between">
-
             <div>
               <p className="text-xs uppercase tracking-wider text-red-700 font-extrabold">
                 Active Hotspots
@@ -626,7 +575,6 @@ export default function Admin() {
             <div className="w-12 h-12 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center text-red-600">
               <MapPin size={23} />
             </div>
-
           </div>
         </div>
 
@@ -634,7 +582,6 @@ export default function Admin() {
 
         <div className="bg-white/90 rounded-3xl p-6 border border-emerald-100 shadow-sm">
           <div className="flex items-center justify-between">
-
             <div>
               <p className="text-xs uppercase tracking-wider text-emerald-700 font-extrabold">
                 Users
@@ -648,10 +595,8 @@ export default function Admin() {
             <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600">
               <Users size={23} />
             </div>
-
           </div>
         </div>
-
       </div>
 
       {/* ========================================================
@@ -659,19 +604,13 @@ export default function Admin() {
       ======================================================== */}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mb-8">
-
         {/* MAP */}
 
         <div className="xl:col-span-2 bg-white/90 rounded-3xl p-6 border border-emerald-100 shadow-sm">
-
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
-
             <div>
               <div className="flex items-center gap-2">
-                <MapPin
-                  size={21}
-                  className="text-emerald-500"
-                />
+                <MapPin size={21} className="text-emerald-500" />
 
                 <h2 className="text-xl font-extrabold text-emerald-950">
                   Live Waste Hotspot Map
@@ -684,7 +623,6 @@ export default function Admin() {
             </div>
 
             <div className="flex items-center gap-3 text-xs font-bold">
-
               <span className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
                 Reports
@@ -694,20 +632,14 @@ export default function Admin() {
                 <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
                 Hotspots
               </span>
-
             </div>
-
           </div>
 
           <div className="h-[460px] rounded-2xl overflow-hidden border border-emerald-200 shadow-inner relative">
-
             {loading ? (
               <div className="absolute inset-0 z-20 bg-emerald-50/80 flex items-center justify-center">
                 <div className="flex items-center gap-3 text-emerald-700 font-extrabold">
-                  <RefreshCw
-                    size={20}
-                    className="animate-spin"
-                  />
+                  <RefreshCw size={20} className="animate-spin" />
                   Loading map...
                 </div>
               </div>
@@ -718,11 +650,9 @@ export default function Admin() {
               setPosition={() => {}}
               markers={mapMarkers}
             />
-
           </div>
 
           <div className="grid grid-cols-3 gap-3 mt-4">
-
             <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3">
               <p className="text-[10px] uppercase tracking-wider text-emerald-600 font-extrabold">
                 Outdoor Reports
@@ -752,17 +682,13 @@ export default function Admin() {
                 {mapMarkers.length}
               </p>
             </div>
-
           </div>
-
         </div>
 
         {/* HOTSPOTS */}
 
         <div className="bg-white/90 rounded-3xl p-6 border border-emerald-100 shadow-sm">
-
           <div className="flex items-center justify-between mb-5">
-
             <div>
               <h2 className="text-xl font-extrabold text-emerald-950">
                 Priority Hotspots
@@ -773,40 +699,30 @@ export default function Admin() {
               </p>
             </div>
 
-            <Layers
-              size={21}
-              className="text-emerald-500"
-            />
-
+            <Layers size={21} className="text-emerald-500" />
           </div>
 
           <div className="space-y-3 max-h-[460px] overflow-y-auto pr-1 custom-scrollbar">
-
             {hotspots.length === 0 ? (
               <div className="border border-dashed border-emerald-200 bg-emerald-50 rounded-2xl p-8 text-center">
-                <MapPin
-                  size={28}
-                  className="mx-auto text-emerald-400 mb-3"
-                />
+                <MapPin size={28} className="mx-auto text-emerald-400 mb-3" />
 
                 <p className="text-emerald-700 font-extrabold">
                   No active hotspot clusters
                 </p>
 
                 <p className="text-xs text-emerald-600/70 mt-1 font-semibold">
-                  New outdoor reports will appear here when clusters are detected.
+                  New outdoor reports will appear here when clusters are
+                  detected.
                 </p>
               </div>
             ) : (
               hotspots.map((hotspot, index) => (
-
                 <div
                   key={`hotspot-${index}`}
                   className="border border-emerald-100 rounded-2xl p-4 bg-emerald-50/50 hover:bg-emerald-50 transition"
                 >
-
                   <div className="flex items-center justify-between gap-3">
-
                     <span className="font-extrabold text-emerald-950">
                       Hotspot #{index + 1}
                     </span>
@@ -814,11 +730,9 @@ export default function Admin() {
                     <span className="text-[10px] uppercase font-extrabold text-red-700 bg-red-50 border border-red-100 px-2 py-1 rounded-md">
                       {formatCondition(hotspot.priority)}
                     </span>
-
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 mt-3">
-
                     <div>
                       <p className="text-[10px] uppercase text-slate-500 font-extrabold">
                         Reports
@@ -838,7 +752,6 @@ export default function Admin() {
                         {formatCondition(hotspot.severity)}
                       </p>
                     </div>
-
                   </div>
 
                   <div className="flex items-center gap-2 mt-3 text-xs text-slate-500 font-semibold">
@@ -849,16 +762,11 @@ export default function Admin() {
                       ? `${hotspot.center.lat.toFixed(5)}, ${hotspot.center.lng.toFixed(5)}`
                       : "Coordinates unavailable"}
                   </div>
-
                 </div>
-
               ))
             )}
-
           </div>
-
         </div>
-
       </div>
 
       {/* ========================================================
@@ -866,9 +774,7 @@ export default function Admin() {
       ======================================================== */}
 
       <div className="bg-white/90 rounded-3xl p-6 border border-emerald-100 shadow-sm mb-8">
-
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
-
           <div>
             <h2 className="text-xl font-extrabold text-emerald-950">
               Incoming Citizen Reports
@@ -880,100 +786,65 @@ export default function Admin() {
           </div>
 
           <div className="flex flex-wrap gap-3">
-
             <select
               className="bg-white border border-emerald-200 text-sm rounded-xl px-3 py-2.5 text-emerald-900 font-bold"
               value={typeFilter}
-              onChange={(e) =>
-                setTypeFilter(e.target.value)
-              }
+              onChange={(e) => setTypeFilter(e.target.value)}
             >
-              <option value="All">
-                All Modes
-              </option>
+              <option value="All">All Modes</option>
 
-              <option value="Outdoor/Public">
-                Outdoor/Public
-              </option>
+              <option value="Outdoor/Public">Outdoor/Public</option>
 
-              <option value="Household">
-                Household
-              </option>
+              <option value="Household">Household</option>
             </select>
 
             <select
               className="bg-white border border-emerald-200 text-sm rounded-xl px-3 py-2.5 text-emerald-900 font-bold"
               value={reportFilter}
-              onChange={(e) =>
-                setReportFilter(e.target.value)
-              }
+              onChange={(e) => setReportFilter(e.target.value)}
             >
-              <option value="All">
-                All Status
-              </option>
+              <option value="All">All Status</option>
 
-              <option value="Pending">
-                Pending
-              </option>
+              <option value="Pending">Pending</option>
 
-              <option value="In Progress">
-                In Progress
-              </option>
+              <option value="In Progress">In Progress</option>
 
-              <option value="Resolved">
-                Resolved
-              </option>
+              <option value="Resolved">Resolved</option>
             </select>
-
           </div>
-
         </div>
 
         <div className="overflow-x-auto">
-
           <table className="w-full text-left">
-
             <thead>
               <tr className="border-b border-emerald-100 bg-emerald-50/60 text-xs uppercase tracking-wider text-emerald-800 font-extrabold">
+                <th className="p-3">Report</th>
 
-                <th className="p-3">
-                  Report
-                </th>
+                <th className="p-3">Location</th>
 
-                <th className="p-3">
-                  Location
-                </th>
+                <th className="p-3">Model</th>
 
-                <th className="p-3">
-                  Model
-                </th>
+                <th className="p-3">Priority</th>
 
-                <th className="p-3">
-                  Priority
-                </th>
-
-                <th className="p-3">
-                  Status
-                </th>
-
+                <th className="p-3">Status</th>
               </tr>
             </thead>
 
             <tbody className="divide-y divide-emerald-50">
-
               {visibleReports.map((report) => {
-
-                const id =
-                  report._id || report.id;
+                const id = report._id || report.id;
 
                 return (
                   <tr
                     key={id}
-                    className="hover:bg-emerald-50/40 transition"
+                    onClick={() =>
+                      navigate(`/admin/report/${id}`, {
+                        state: { report },
+                      })
+                    }
+                    className="hover:bg-emerald-50/40 transition cursor-pointer"
                   >
-
                     <td className="p-4">
-
                       <div className="font-extrabold text-emerald-950">
                         {report.title}
                       </div>
@@ -981,88 +852,61 @@ export default function Admin() {
                       <div className="text-xs text-slate-500 mt-1">
                         {formatCondition(report.reportType)}
                       </div>
-
                     </td>
 
                     <td className="p-4">
-
                       <div className="text-sm font-semibold text-slate-700 max-w-[220px]">
-                        {report.address ||
-                          "GPS coordinates submitted"}
+                        {report.address || "GPS coordinates submitted"}
                       </div>
 
                       {Number.isFinite(report.lat) &&
                         Number.isFinite(report.lng) && (
                           <div className="text-[11px] text-slate-400 mt-1">
-                            {report.lat.toFixed(5)},{" "}
-                            {report.lng.toFixed(5)}
+                            {report.lat.toFixed(5)}, {report.lng.toFixed(5)}
                           </div>
                         )}
-
                     </td>
 
                     <td className="p-4">
-
                       <span className="inline-flex px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-extrabold capitalize">
-                        {formatCondition(
-                          report.aiCategory,
-                        )}
+                        {formatCondition(report.aiCategory)}
                       </span>
 
                       {report.aiConfidence !== undefined && (
                         <div className="text-[11px] text-slate-500 mt-1">
-                          Model confidence:{" "}
-                          {report.aiConfidence}%
+                          Model confidence: {report.aiConfidence}%
                         </div>
                       )}
-
                     </td>
 
                     <td className="p-4">
-
                       <div className="font-extrabold text-red-700 text-sm">
-                        {report.priority ||
-                          report.severity ||
-                          "Low"}
+                        {report.priority || report.severity || "Low"}
                       </div>
 
                       <div className="text-[11px] text-slate-500 mt-1">
-                        {report.quantity} quantity ·{" "}
-                        {report.density} density
+                        {report.quantity} quantity · {report.density} density
                       </div>
-
                     </td>
 
                     <td className="p-4">
-
                       <select
                         className="bg-white border border-emerald-200 text-sm rounded-xl px-3 py-2 text-emerald-900 font-bold disabled:opacity-50"
                         value={report.status}
                         disabled={updatingId === id}
-                        onChange={(e) =>
-                          updateReportStatus(
-                            id,
-                            e.target.value,
-                          )
-                        }
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          updateReportStatus(id, e.target.value);
+                        }}
                       >
+                        <option value="Pending">Pending</option>
 
-                        <option value="Pending">
-                          Pending
-                        </option>
+                        <option value="In Progress">In Progress</option>
 
-                        <option value="In Progress">
-                          In Progress
-                        </option>
-
-                        <option value="Resolved">
-                          Resolved
-                        </option>
-
+                        <option value="Resolved">Resolved</option>
                       </select>
-
                     </td>
-
                   </tr>
                 );
               })}
@@ -1077,13 +921,9 @@ export default function Admin() {
                   </td>
                 </tr>
               )}
-
             </tbody>
-
           </table>
-
         </div>
-
       </div>
 
       {/* ========================================================
@@ -1091,7 +931,6 @@ export default function Admin() {
       ======================================================== */}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
-
         <div className="bg-orange-50 border border-orange-100 rounded-2xl p-5">
           <p className="text-xs uppercase font-extrabold text-orange-700 tracking-wider">
             Pending Resolution
@@ -1121,7 +960,6 @@ export default function Admin() {
             {resolvedReports}
           </p>
         </div>
-
       </div>
 
       {/* ========================================================
@@ -1129,9 +967,7 @@ export default function Admin() {
       ======================================================== */}
 
       <div className="bg-white/90 rounded-3xl p-6 border border-blue-100 shadow-sm mb-8">
-
         <div className="flex items-center justify-between mb-6">
-
           <div>
             <h2 className="text-xl font-extrabold text-slate-800">
               Logistics / Fleet Assignment
@@ -1142,80 +978,46 @@ export default function Admin() {
             </p>
           </div>
 
-          <Truck
-            size={22}
-            className="text-blue-600"
-          />
-
+          <Truck size={22} className="text-blue-600" />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-
           {pickups.map((pickup) => {
-
-            const id =
-              pickup._id || pickup.id;
+            const id = pickup._id || pickup.id;
 
             return (
               <div
                 key={id}
                 className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"
               >
-
                 <div className="flex items-center justify-between gap-3">
-
                   <span className="font-extrabold text-blue-700">
-                    {pickup.wasteType ||
-                      "Waste Collection"}
+                    {pickup.wasteType || "Waste Collection"}
                   </span>
 
                   <span className="text-xs font-bold text-slate-500">
-                    {pickup.status ||
-                      "Requested"}
+                    {pickup.status || "Requested"}
                   </span>
-
                 </div>
 
                 <p className="text-sm text-slate-600 font-semibold mt-3 line-clamp-2">
-                  {pickup.address ||
-                    "Location unavailable"}
+                  {pickup.address || "Location unavailable"}
                 </p>
 
                 <div className="mt-4 pt-4 border-t border-slate-100">
-
                   <select
                     className="w-full bg-white border border-slate-200 text-xs rounded-xl px-3 py-2.5 text-slate-800 font-bold disabled:opacity-50"
-                    value={
-                      pickup.status ||
-                      "Requested"
-                    }
-                    disabled={
-                      updatingId === id
-                    }
-                    onChange={(e) =>
-                      updatePickupStatus(
-                        id,
-                        e.target.value,
-                      )
-                    }
+                    value={pickup.status || "Requested"}
+                    disabled={updatingId === id}
+                    onChange={(e) => updatePickupStatus(id, e.target.value)}
                   >
+                    <option value="Requested">Requested</option>
 
-                    <option value="Requested">
-                      Requested
-                    </option>
+                    <option value="Assigned">Assigned</option>
 
-                    <option value="Assigned">
-                      Assigned
-                    </option>
-
-                    <option value="Completed">
-                      Completed
-                    </option>
-
+                    <option value="Completed">Completed</option>
                   </select>
-
                 </div>
-
               </div>
             );
           })}
@@ -1225,9 +1027,7 @@ export default function Admin() {
               No cleanup dispatches available.
             </div>
           )}
-
         </div>
-
       </div>
 
       {/* ========================================================
@@ -1235,9 +1035,7 @@ export default function Admin() {
       ======================================================== */}
 
       <div className="bg-white/90 rounded-3xl p-6 border border-emerald-100 shadow-sm">
-
         <div className="flex items-center justify-between mb-6">
-
           <div>
             <h2 className="text-xl font-extrabold text-emerald-950">
               User & Authority Management
@@ -1251,49 +1049,30 @@ export default function Admin() {
           <span className="px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm font-extrabold">
             {users.length} accounts
           </span>
-
         </div>
 
         <div className="overflow-x-auto">
-
           <table className="w-full text-left">
-
             <thead>
               <tr className="bg-emerald-50 text-xs uppercase tracking-wider text-emerald-800 font-extrabold">
+                <th className="p-3">User</th>
 
-                <th className="p-3">
-                  User
-                </th>
+                <th className="p-3">Email</th>
 
-                <th className="p-3">
-                  Email
-                </th>
+                <th className="p-3">Eco Points</th>
 
-                <th className="p-3">
-                  Eco Points
-                </th>
-
-                <th className="p-3">
-                  Access Role
-                </th>
-
+                <th className="p-3">Access Role</th>
               </tr>
             </thead>
 
             <tbody className="divide-y divide-emerald-50">
-
               {users.map((account) => {
-
-                const id =
-                  account._id ||
-                  account.id;
+                const id = account._id || account.id;
 
                 return (
                   <tr key={id}>
-
                     <td className="p-3 font-bold text-emerald-950">
-                      {account.name ||
-                        "Unknown User"}
+                      {account.name || "Unknown User"}
                     </td>
 
                     <td className="p-3 text-sm text-slate-600">
@@ -1305,48 +1084,24 @@ export default function Admin() {
                     </td>
 
                     <td className="p-3">
-
                       <select
                         className="border border-emerald-200 rounded-xl px-3 py-2 text-sm font-bold text-emerald-900 disabled:opacity-50"
-                        value={
-                          account.role ||
-                          "Citizen"
-                        }
-                        disabled={
-                          updatingId === id
-                        }
-                        onChange={(event) =>
-                          updateRole(
-                            id,
-                            event.target.value,
-                          )
-                        }
+                        value={account.role || "Citizen"}
+                        disabled={updatingId === id}
+                        onChange={(event) => updateRole(id, event.target.value)}
                       >
+                        <option value="Citizen">Citizen</option>
 
-                        <option value="Citizen">
-                          Citizen
-                        </option>
-
-                        <option value="Admin">
-                          Admin
-                        </option>
-
+                        <option value="Admin">Admin</option>
                       </select>
-
                     </td>
-
                   </tr>
                 );
               })}
-
             </tbody>
-
           </table>
-
         </div>
-
       </div>
-
     </div>
   );
 }
