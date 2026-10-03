@@ -47,6 +47,64 @@ function calculatePriority({
   return "Low";
 }
 
+function calculatePriorityScore({
+  severity,
+  quantity,
+  reportCount = 1,
+  density = "Medium",
+  hazard = "None",
+  createdAt,
+}) {
+  const severityScore =
+    (severityWeight[severity] || 1) / 4;
+
+  const quantityScore =
+    (quantityWeight[quantity] || 1) / 3;
+
+  const reportFrequencyScore =
+    Math.min(reportCount, 5) / 5;
+
+  const densityWeight = {
+    Low: 1,
+    Medium: 2,
+    High: 3,
+  };
+
+  const densityScore =
+    (densityWeight[density] || 2) / 3;
+
+  const hazardWeight = {
+    None: 0,
+    Possible: 0.5,
+    Confirmed: 1,
+  };
+
+  const hazardScore =
+    hazardWeight[hazard] || 0;
+
+  // Older unresolved reports gradually receive more priority.
+  const ageHours = createdAt
+    ? Math.max(
+        0,
+        (Date.now() - new Date(createdAt).getTime()) /
+          (1000 * 60 * 60)
+      )
+    : 0;
+
+  const ageScore =
+    Math.min(ageHours / 72, 1);
+
+  const score =
+    severityScore * 0.30 +
+    quantityScore * 0.20 +
+    reportFrequencyScore * 0.20 +
+    ageScore * 0.15 +
+    densityScore * 0.10 +
+    hazardScore * 0.05;
+
+  return Number(score.toFixed(4));
+}
+
 // ============================================================
 // DISTANCE
 // ============================================================
@@ -141,6 +199,34 @@ export async function createReport(req, res) {
   }
 }
 
+const existingReports = mongo()
+  ? await Report.find({
+      reportType,
+      status: { $ne: "Resolved" },
+      location: {
+        $near: {
+          $geometry: {
+            type: "Point",
+            coordinates: [longitude, latitude],
+          },
+          $maxDistance: 500,
+        },
+      },
+    }).limit(5)
+  : [];
+
+const reportCount = existingReports.length + 1;
+
+let calculatedDensity = density;
+
+if (reportCount >= 5) {
+  calculatedDensity = "High";
+} else if (reportCount >= 3) {
+  calculatedDensity = "Medium";
+} else {
+  calculatedDensity = "Low";
+}
+
     const data = {
       reporter: req.user?.id || null,
 
@@ -172,10 +258,30 @@ aiConfidence:
       hazard,
       severity,
 
-      priority: calculatePriority({
-        quantity,
-        severity,
-      }),
+      priority: (() => {
+  const score = calculatePriorityScore({
+    severity,
+    quantity,
+    reportCount,
+    density: calculatedDensity,
+    hazard,
+    createdAt: new Date(),
+  });
+
+  if (score >= 0.75) return "Critical";
+  if (score >= 0.50) return "High";
+  if (score >= 0.25) return "Medium";
+  return "Low";
+})(),
+
+priorityScore: calculatePriorityScore({
+  severity,
+  quantity,
+  reportCount,
+  density: calculatedDensity,
+  hazard,
+  createdAt: new Date(),
+}),
 
       address,
 
@@ -266,10 +372,8 @@ async function getHotspots(
       }).lean()
     : memoryStore.reports.filter(
         (report) =>
-          report.status !==
-            "Resolved" &&
-          report.reportType ===
-            "Outdoor/Public",
+          report.status !== "Resolved" &&
+          report.reportType === "Outdoor/Public",
       );
 
   const validReports = reports.filter(
@@ -299,12 +403,10 @@ async function getHotspots(
   for (const report of validReports) {
     const coordinates = [
       Number(
-        report.location
-          .coordinates[0],
+        report.location.coordinates[0],
       ),
       Number(
-        report.location
-          .coordinates[1],
+        report.location.coordinates[1],
       ),
     ];
 
@@ -335,9 +437,7 @@ async function getHotspots(
       clusters.push(nearestCluster);
     }
 
-    nearestCluster.reports.push(
-      report,
-    );
+    nearestCluster.reports.push(report);
 
     // Recalculate cluster center
     const total =
@@ -348,8 +448,7 @@ async function getHotspots(
         (sum, item) =>
           sum +
           Number(
-            item.location
-              .coordinates[0],
+            item.location.coordinates[0],
           ),
         0,
       ) / total,
@@ -358,8 +457,7 @@ async function getHotspots(
         (sum, item) =>
           sum +
           Number(
-            item.location
-              .coordinates[1],
+            item.location.coordinates[1],
           ),
         0,
       ) / total,
@@ -408,6 +506,28 @@ async function getHotspots(
       const reportCount =
         cluster.reports.length;
 
+      // Average priority score of reports
+      const averagePriorityScore =
+        cluster.reports.reduce(
+          (sum, report) =>
+            sum +
+            (Number(
+              report.priorityScore,
+            ) || 0),
+          0,
+        ) / reportCount;
+
+      // Total estimated quantity
+      const totalQuantity =
+        cluster.reports.reduce(
+          (sum, report) =>
+            sum +
+            (quantityWeight[
+              report.quantity
+            ] || 1),
+          0,
+        );
+
       return {
         center: {
           lat:
@@ -427,11 +547,17 @@ async function getHotspots(
             reportCount,
           }),
 
+        priorityScore: Number(
+          averagePriorityScore.toFixed(4),
+        ),
+
         severity:
           highestSeverity,
 
         quantity:
           highestQuantity,
+
+        totalQuantity,
 
         reports:
           cluster.reports,
@@ -440,12 +566,8 @@ async function getHotspots(
 
   return hotspots.sort(
     (first, second) =>
-      (severityWeight[
-        second.priority
-      ] || 0) -
-      (severityWeight[
-        first.priority
-      ] || 0),
+      (second.priorityScore || 0) -
+      (first.priorityScore || 0),
   );
 }
 
@@ -494,212 +616,732 @@ export async function listHotspots(
 // ROUTE PLANNING
 // ============================================================
 
-export async function planRoute(
-  req,
-  res,
-) {
-  const depot = [
-    Number(req.query.lng),
-    Number(req.query.lat),
-  ];
+export async function planRoute(req, res) {
+  try {
+    const depotLng = Number(req.query.lng);
+    const depotLat = Number(req.query.lat);
 
-  if (
-    !Number.isFinite(depot[0]) ||
-    !Number.isFinite(depot[1])
-  ) {
-    return res.status(400).json({
-      message:
-        "Provide valid depot lat and lng query parameters.",
-    });
-  }
+    if (
+      !Number.isFinite(depotLng) ||
+      !Number.isFinite(depotLat)
+    ) {
+      return res.status(400).json({
+        message:
+          "Provide valid depot lat and lng query parameters.",
+      });
+    }
 
-  const capacity = Math.max(
-    1,
-    Math.min(
-      Number(
-        req.query.capacity,
-      ) || 20,
-      1000,
-    ),
-  );
-
-  const radiusKm = Math.max(
-    0.05,
-    Math.min(
-      Number(
-        req.query.radiusKm,
-      ) || HOTSPOT_RADIUS_KM,
-      10,
-    ),
-  );
-
-  const priorityWeight = {
-    Low: 1,
-    Medium: 2,
-    High: 3,
-    Critical: 4,
-  };
-
-  const remaining =
-    (
-      await getHotspots(
-        radiusKm,
-      )
-    ).map((hotspot) => ({
-      ...hotspot,
-
-      distanceFromCurrent:
-        distanceKm(
-          depot,
-          [
-            hotspot.center
-              .lng,
-            hotspot.center
-              .lat,
-          ],
-        ),
-    }));
-
-  const stops = [];
-
-  let current = depot;
-  let capacityUsed = 0;
-
-  while (remaining.length) {
-    const available =
-      remaining.filter(
-        (hotspot) =>
-          capacityUsed +
-            hotspot.reportCount <=
-          capacity,
-      );
-
-    if (!available.length)
-      break;
-
-    available.sort(
-      (first, second) => {
-        const priorityDifference =
-          (priorityWeight[
-            second.priority
-          ] || 0) -
-          (priorityWeight[
-            first.priority
-          ] || 0);
-
-        return (
-          priorityDifference ||
-          distanceKm(
-            current,
-            [
-              first.center
-                .lng,
-              first.center
-                .lat,
-            ],
-          ) -
-          distanceKm(
-            current,
-            [
-              second.center
-                .lng,
-              second.center
-                .lat,
-            ],
-          )
-        );
-      },
-    );
-
-    const next =
-      available[0];
-
-    const index =
-      remaining.indexOf(
-        next,
-      );
-
-    remaining.splice(
-      index,
+    const capacity = Math.max(
       1,
+      Math.min(
+        Number(req.query.capacity) || 100,
+        1000
+      )
     );
 
-    const stopDistance =
-      distanceKm(
-        current,
-        [
-          next.center.lng,
-          next.center.lat,
-        ],
-      );
+    const radiusKm = Math.max(
+      0.05,
+      Math.min(
+        Number(req.query.radiusKm) ||
+          HOTSPOT_RADIUS_KM,
+        10
+      )
+    );
 
-    stops.push({
-      sequence:
-        stops.length + 1,
+    // ========================================================
+    // GET CURRENT UNRESOLVED OUTDOOR/PUBLIC HOTSPOTS
+    // ========================================================
 
-      ...next,
+    const hotspots =
+      await getHotspots(radiusKm);
 
-      distanceFromPreviousKm:
-        Number(
-          stopDistance.toFixed(
-            2,
-          ),
-        ),
+    if (!hotspots.length) {
+      return res.json({
+        depot: {
+          lat: depotLat,
+          lng: depotLng,
+        },
+        capacity,
+        capacityUsed: 0,
+        totalDistanceKm: 0,
+        returnToDepotKm: 0,
+        unassignedHotspots: 0,
+        stops: [],
+        method: "EcoTrek-Learned",
+      });
+    }
+
+    // ========================================================
+    // CONVERT REPORTS INTO ML MODEL INPUT
+    // ========================================================
+
+    const reports = [];
+
+    // Keep original report information.
+    // This allows us to use the actual saved address
+    // instead of guessing the location from coordinates.
+    const originalReports = new Map();
+
+    hotspots.forEach((hotspot) => {
+      if (!Array.isArray(hotspot.reports)) {
+        return;
+      }
+
+      hotspot.reports.forEach((report) => {
+        // ----------------------------------------------------
+        // IMPORTANT:
+        // MongoDB GeoJSON = [longitude, latitude]
+        // ----------------------------------------------------
+
+        const lat = Number(
+          report.latitude ??
+          report.lat ??
+          report.location?.coordinates?.[1]
+        );
+
+        const lng = Number(
+          report.longitude ??
+          report.lng ??
+          report.location?.coordinates?.[0]
+        );
+
+        if (
+          !Number.isFinite(lat) ||
+          !Number.isFinite(lng)
+        ) {
+          return;
+        }
+
+        const reportId = String(
+          report._id ||
+          report.id ||
+          `${lat}-${lng}-${reports.length}`
+        );
+
+        // ----------------------------------------------------
+        // SAVE ORIGINAL REPORT INFORMATION
+        // ----------------------------------------------------
+
+        originalReports.set(
+          reportId,
+          {
+            address:
+              report.address ||
+              report.locationName ||
+              "",
+
+            latitude: lat,
+            longitude: lng,
+
+            title:
+              report.title || "",
+
+            description:
+              report.description || "",
+          }
+        );
+
+        // ----------------------------------------------------
+        // AGE
+        // ----------------------------------------------------
+
+        const createdAt =
+          report.createdAt
+            ? new Date(
+                report.createdAt
+              ).getTime()
+            : Date.now();
+
+        const ageHours = Math.max(
+          0,
+          (Date.now() - createdAt) /
+            (1000 * 60 * 60)
+        );
+
+        // ----------------------------------------------------
+        // QUANTITY → APPROXIMATE KG
+        // ----------------------------------------------------
+
+        const quantity =
+          report.quantity ||
+          hotspot.quantity ||
+          "Medium";
+
+        const volumeMap = {
+          Low: 10,
+          Medium: 20,
+          High: 30,
+        };
+
+        const volumeKg =
+          Number(report.volume_kg) ||
+          Number(report.volumeKg) ||
+          volumeMap[quantity] ||
+          20;
+
+        // ----------------------------------------------------
+        // HAZARD → TOXICITY PROXY
+        // ----------------------------------------------------
+
+        const hazard =
+          report.hazard ||
+          hotspot.hazard ||
+          "None";
+
+        const toxicityMap = {
+          None: 0,
+          Possible: 0.5,
+          Confirmed: 1,
+        };
+
+        // ----------------------------------------------------
+        // ML REPORT
+        // ----------------------------------------------------
+
+        reports.push({
+          id: reportId,
+
+          lat,
+          lng,
+
+          severity:
+            report.severity ||
+            hotspot.severity ||
+            "Medium",
+
+          quantity,
+
+          density:
+            report.density ||
+            hotspot.density ||
+            "Medium",
+
+          hazard,
+
+          report_count:
+            Number(report.reportCount) ||
+            Number(hotspot.reportCount) ||
+            1,
+
+          age_hours: ageHours,
+
+          volume_kg: volumeKg,
+
+          toxicity:
+            Number(report.toxicity) ||
+            toxicityMap[hazard] ||
+            0,
+
+          priority_score:
+            Number(report.priorityScore) ||
+            Number(hotspot.priorityScore) ||
+            0.5,
+        });
+      });
     });
 
-    capacityUsed +=
-      next.reportCount;
+    // ========================================================
+    // FALLBACK: IF HOTSPOT REPORTS ARE NOT AVAILABLE
+    // ========================================================
 
-    current = [
-      next.center.lng,
-      next.center.lat,
-    ];
-  }
+    if (!reports.length) {
+      hotspots.forEach(
+        (hotspot, index) => {
+          if (
+            !hotspot.center ||
+            !Number.isFinite(
+              Number(
+                hotspot.center.lat
+              )
+            ) ||
+            !Number.isFinite(
+              Number(
+                hotspot.center.lng
+              )
+            )
+          ) {
+            return;
+          }
 
-  const returnDistance =
-    stops.length
-      ? distanceKm(
-          current,
-          depot,
+          const quantity =
+            hotspot.quantity ||
+            "Medium";
+
+          const volumeMap = {
+            Low: 10,
+            Medium: 20,
+            High: 30,
+          };
+
+          const hazard =
+            hotspot.hazard ||
+            "None";
+
+          const toxicityMap = {
+            None: 0,
+            Possible: 0.5,
+            Confirmed: 1,
+          };
+
+          const reportId =
+            String(
+              hotspot.id ||
+              `hotspot-${index + 1}`
+            );
+
+          originalReports.set(
+            reportId,
+            {
+              address:
+                hotspot.address ||
+                hotspot.locationName ||
+                "",
+
+              latitude:
+                Number(
+                  hotspot.center.lat
+                ),
+
+              longitude:
+                Number(
+                  hotspot.center.lng
+                ),
+            }
+          );
+
+          reports.push({
+            id: reportId,
+
+            lat:
+              Number(
+                hotspot.center.lat
+              ),
+
+            lng:
+              Number(
+                hotspot.center.lng
+              ),
+
+            severity:
+              hotspot.severity ||
+              "Medium",
+
+            quantity,
+
+            density:
+              hotspot.density ||
+              "Medium",
+
+            hazard,
+
+            report_count:
+              Number(
+                hotspot.reportCount
+              ) || 1,
+
+            age_hours: 0,
+
+            volume_kg:
+              Number(
+                hotspot.totalQuantity
+              ) ||
+              volumeMap[quantity] ||
+              20,
+
+            toxicity:
+              toxicityMap[hazard] ||
+              0,
+
+            priority_score:
+              Number(
+                hotspot.priorityScore
+              ) || 0.5,
+          });
+        }
+      );
+    }
+
+    if (!reports.length) {
+      return res.json({
+        depot: {
+          lat: depotLat,
+          lng: depotLng,
+        },
+
+        capacity,
+
+        capacityUsed: 0,
+
+        totalDistanceKm: 0,
+
+        returnToDepotKm: 0,
+
+        unassignedHotspots:
+          hotspots.length,
+
+        stops: [],
+
+        method:
+          "EcoTrek-Learned",
+      });
+    }
+
+    // ========================================================
+    // CALL TRAINED ECO-TREK ML ROUTE MODEL
+    // ========================================================
+
+    const ML_SERVICE_URL =
+      process.env.ML_SERVICE_URL ||
+      "http://127.0.0.1:8080";
+
+    const mlResponse =
+      await fetch(
+        `${ML_SERVICE_URL}/predict-route`,
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body: JSON.stringify({
+            depot: [
+              depotLat,
+              depotLng,
+            ],
+
+            vehicleCapacityKg:
+              capacity,
+
+            reports,
+          }),
+        }
+      );
+
+    if (!mlResponse.ok) {
+      const errorText =
+        await mlResponse.text();
+
+      throw new Error(
+        `ML route service failed: ${errorText}`
+      );
+    }
+
+    const mlResult =
+      await mlResponse.json();
+
+    if (!mlResult.success) {
+      throw new Error(
+        mlResult.message ||
+        "ML route optimization failed."
+      );
+    }
+
+    // ========================================================
+    // CONVERT ML ROUTE INTO ADMIN RESPONSE
+    // ========================================================
+
+    const stops =
+      await Promise.all(
+        (mlResult.route || []).map(
+          async (stop) => {
+            const reportId =
+              String(
+                stop.reportId || ""
+              );
+
+            const original =
+              originalReports.get(
+                reportId
+              );
+
+            // ------------------------------------------------
+            // USE ORIGINAL REPORT COORDINATES
+            // ------------------------------------------------
+
+            const latitude =
+              Number(
+                original?.latitude ??
+                stop.latitude
+              );
+
+            const longitude =
+              Number(
+                original?.longitude ??
+                stop.longitude
+              );
+
+            // ------------------------------------------------
+            // USE SAVED ADDRESS FIRST
+            // ------------------------------------------------
+
+            let locationName =
+              original?.address ||
+              "";
+
+            // If no address was stored,
+            // fall back to reverse geocoding.
+            if (
+              !locationName
+            ) {
+              locationName =
+                await reverseGeocode(
+                  latitude,
+                  longitude
+                );
+            }
+
+            // ------------------------------------------------
+            // RETURN ADMIN STOP
+            // ------------------------------------------------
+
+            return {
+              sequence:
+                stop.sequence,
+
+              reportId,
+
+              center: {
+                lat: latitude,
+                lng: longitude,
+              },
+
+              locationName,
+
+              reportCount: 1,
+
+              priority:
+                Number(
+                  stop.priorityScore ||
+                    0
+                ) >= 0.75
+                  ? "Critical"
+                  : Number(
+                      stop.priorityScore ||
+                        0
+                    ) >= 0.50
+                  ? "High"
+                  : Number(
+                      stop.priorityScore ||
+                        0
+                    ) >= 0.25
+                  ? "Medium"
+                  : "Low",
+
+              priorityScore:
+                Number(
+                  stop.priorityScore ||
+                    0
+                ),
+
+              severity:
+                stop.severity ||
+                "Medium",
+
+              quantity:
+                stop.quantity ||
+                "Medium",
+
+              density:
+                stop.density ||
+                "Medium",
+
+              hazard:
+                stop.hazard ||
+                "None",
+
+              totalQuantity:
+                Number(
+                  stop.wasteKg || 0
+                ),
+
+              routeScore:
+                Number(
+                  stop.mlUtility || 0
+                ),
+
+              mlUtility:
+                Number(
+                  stop.mlUtility || 0
+                ),
+
+              reports: [
+                {
+                  id: reportId,
+
+                  lat: latitude,
+
+                  lng: longitude,
+
+                  locationName,
+
+                  wasteKg:
+                    Number(
+                      stop.wasteKg ||
+                        0
+                    ),
+                },
+              ],
+            };
+          }
         )
-      : 0;
+      );
 
-  return res.json({
-    depot: {
-      lat: depot[1],
-      lng: depot[0],
-    },
+    // ========================================================
+    // CALCULATE DISTANCE BETWEEN STOPS
+    // ========================================================
 
-    capacity,
+    let previousPoint = [
+      depotLng,
+      depotLat,
+    ];
 
-    capacityUsed,
-
-    totalDistanceKm:
-      Number(
-        (
-          stops.reduce(
-            (sum, stop) =>
-              sum +
-              stop.distanceFromPreviousKm,
-            0,
-          ) +
-          returnDistance
-        ).toFixed(2),
-      ),
-
-    returnToDepotKm:
-      Number(
-        returnDistance.toFixed(
-          2,
+    stops.forEach((stop) => {
+      const currentPoint = [
+        Number(
+          stop.center.lng
         ),
-      ),
 
-    unassignedHotspots:
-      remaining.length,
+        Number(
+          stop.center.lat
+        ),
+      ];
 
-    stops,
-  });
+      const distance =
+        distanceKm(
+          previousPoint,
+          currentPoint
+        );
+
+      stop.distanceFromPreviousKm =
+        Number(
+          distance.toFixed(2)
+        );
+
+      previousPoint =
+        currentPoint;
+    });
+
+    // ========================================================
+    // FINAL RESPONSE
+    // ========================================================
+
+    return res.json({
+      depot: {
+        lat: depotLat,
+        lng: depotLng,
+      },
+
+      capacity,
+
+      capacityUsed:
+        Number(
+          mlResult.capacity_used_kg ||
+            0
+        ),
+
+      totalDistanceKm:
+        Number(
+          mlResult.total_distance_km ||
+            0
+        ),
+
+      returnToDepotKm:
+        Number(
+          mlResult.return_distance_km ||
+            0
+        ),
+
+      unassignedHotspots:
+        Math.max(
+          0,
+          hotspots.length -
+            stops.length
+        ),
+
+      stops,
+
+      method:
+        "EcoTrek-Learned",
+
+      mlModel: {
+        name:
+          "ecotrek_route_utility_model",
+
+        version:
+          "synthetic-training-v1",
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Route planning error:",
+      error
+    );
+
+    console.error(
+      "Error cause:",
+      error.cause
+    );
+
+    console.error(
+      "Error stack:",
+      error.stack
+    );
+
+    return res.status(500).json({
+      message:
+        error.message ||
+        "Failed to generate route.",
+    });
+  }
 }
+
+// ============================================================
+// REVERSE GEOCODING
+// ============================================================
+
+const reverseGeocode = async (lat, lng) => {
+  try {
+    if (
+      !Number.isFinite(Number(lat)) ||
+      !Number.isFinite(Number(lng))
+    ) {
+      return "Location unavailable";
+    }
+
+    const url =
+      `https://nominatim.openstreetmap.org/reverse` +
+      `?format=jsonv2&lat=${encodeURIComponent(lat)}` +
+      `&lon=${encodeURIComponent(lng)}` +
+      `&zoom=18&addressdetails=1`;
+
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "EcoTrek-Waste-Management/1.0",
+        Accept: "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      return "Location unavailable";
+    }
+
+    const data = await response.json();
+
+    return (
+      data?.display_name ||
+      "Location unavailable"
+    );
+  } catch (error) {
+    console.error(
+      "Reverse geocoding failed:",
+      error.message
+    );
+
+    return "Location unavailable";
+  }
+};
 
 // ============================================================
 // LIST REPORTS

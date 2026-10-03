@@ -24,8 +24,8 @@ export default function Reports() {
     title: "",
     description: "",
     address: "",
-    lat: "28.6139",
-    lng: "77.2090",
+    lat: "",
+    lng: "",
     aiCategory: "Unknown",
     aiConfidence: 0,
     reportType: "Outdoor/Public",
@@ -234,76 +234,144 @@ description: `Model detected ${
   // SUBMIT REPORT / HOTSPOT
   // ============================================================
 
-  const submit = async (e) => {
-    e.preventDefault();
+ const submit = async (e) => {
+  e.preventDefault();
 
-    setErr("");
+  setErr("");
+
+  if (!form.address.trim()) {
+    setErr("Please enter or detect a physical location.");
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    let latitude = Number(pos?.lat || form.lat);
+    let longitude = Number(pos?.lng || form.lng);
+
+    // ============================================================
+    // IF GPS/MAP COORDINATES ARE NOT AVAILABLE,
+    // CONVERT THE ENTERED ADDRESS INTO COORDINATES
+    // ============================================================
 
     if (
-      form.reportType === "Outdoor/Public" &&
-      !pos &&
-      (!form.lat || !form.lng)
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude)
     ) {
-      setErr(
-        "Please detect the GPS location before submitting an outdoor hotspot.",
+      const geocodeResponse = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(
+          form.address
+        )}`,
+        {
+          headers: {
+            Accept: "application/json",
+          },
+        }
       );
-      return;
+
+      if (!geocodeResponse.ok) {
+        throw new Error(
+          "Unable to find coordinates for this location."
+        );
+      }
+
+      const geocodeData =
+        await geocodeResponse.json();
+
+      if (!geocodeData?.length) {
+        throw new Error(
+          "Location not found. Please enter a more specific address or use Detect GPS Target."
+        );
+      }
+
+      latitude = Number(
+        geocodeData[0].lat
+      );
+
+      longitude = Number(
+        geocodeData[0].lon
+      );
     }
 
-    setLoading(true);
+    if (
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude)
+    ) {
+      throw new Error(
+        "Valid location coordinates could not be determined."
+      );
+    }
+
+    // ============================================================
+    // SUBMIT ACTUAL COORDINATES
+    // ============================================================
 
     const fd = new FormData();
 
     const reportData = {
       ...form,
-      ...(pos || {}),
+
+      lat: String(latitude),
+      lng: String(longitude),
     };
 
-    Object.entries(reportData).forEach(([key, value]) => {
-      fd.append(key, value);
-    });
+    Object.entries(reportData).forEach(
+      ([key, value]) => {
+        fd.append(key, value);
+      }
+    );
 
     if (file) {
       fd.append("image", file);
     }
 
-    try {
-      await api("/reports", {
-        method: "POST",
-        body: fd,
-      });
+    await api("/reports", {
+      method: "POST",
+      body: fd,
+    });
 
-      updateEcoPoints(10);
+    updateEcoPoints(10);
 
-      setForm({
-        title: "",
-        description: "",
-        address: "",
-        lat: "28.6139",
-        lng: "77.2090",
-        aiCategory: "Unknown",
-        aiConfidence: 0,
-        reportType: "Outdoor/Public",
-        quantity: "Medium",
-        density: "Medium",
-        hazard: "None",
-        severity: "Medium",
-      });
+    // ============================================================
+    // RESET FORM
+    // ============================================================
 
-      setFile(null);
-      setAnalysis(null);
-      setPos(null);
+    setForm({
+      title: "",
+      description: "",
+      address: "",
+      lat: "",
+      lng: "",
+      aiCategory: "Unknown",
+      aiConfidence: 0,
+      reportType: "Outdoor/Public",
+      quantity: "Medium",
+      density: "Medium",
+      hazard: "None",
+      severity: "Medium",
+    });
 
-      await load();
-    } catch (error) {
-      console.error("Report submission failed:", error);
+    setFile(null);
+    setAnalysis(null);
+    setPos(null);
 
-      setErr(error.message || "Transmission failed.");
-    } finally {
-      setLoading(false);
-    }
-  };
+    await load();
 
+  } catch (error) {
+    console.error(
+      "Report submission failed:",
+      error
+    );
+
+    setErr(
+      error.message ||
+        "Transmission failed."
+    );
+  } finally {
+    setLoading(false);
+  }
+};
   // ============================================================
   // AI CONDITION HELPERS
   // ============================================================

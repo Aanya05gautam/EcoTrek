@@ -2,8 +2,11 @@ import io
 import json
 import os
 from pathlib import Path
-
+import joblib
 import numpy as np
+import pandas as pd
+from math import radians, sin, cos, asin, sqrt
+
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
@@ -131,6 +134,291 @@ def get_model():
 
     return model
 
+# ============================================================
+# ECOTREK ROUTE OPTIMIZATION MODEL
+# ============================================================
+
+ROUTE_MODEL_PATH = Path(
+    os.getenv(
+        "ROUTE_MODEL_PATH",
+        BASE_DIR / "models" / "ecotrek_route_utility_model.joblib"
+    )
+)
+
+route_model = joblib.load(ROUTE_MODEL_PATH)
+
+print(f"✅ Route utility model loaded: {ROUTE_MODEL_PATH}")
+
+
+# Feature mappings used during training
+SEVERITY = {
+    "Low": 1,
+    "Medium": 2,
+    "High": 3,
+    "Critical": 4,
+}
+
+QUANTITY = {
+    "Low": 1,
+    "Medium": 2,
+    "High": 3,
+}
+
+DENSITY = {
+    "Low": 1,
+    "Medium": 2,
+    "High": 3,
+}
+
+HAZARD = {
+    "None": 0,
+    "Possible": 0.5,
+    "Confirmed": 1,
+}
+
+ROUTE_FEATURES = [
+    "severity_num",
+    "quantity_num",
+    "density_num",
+    "hazard_num",
+    "report_count",
+    "age_hours",
+    "volume_kg",
+    "toxicity",
+    "priority_score",
+    "distance_km",
+]
+
+
+def haversine_distance_km(point1, point2):
+    lat1, lon1 = map(radians, point1)
+    lat2, lon2 = map(radians, point2)
+
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+
+    a = (
+        sin(dlat / 2) ** 2
+        + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+    )
+
+    return 6371.0 * 2 * asin(sqrt(min(1, a)))
+
+
+def prepare_route_features(reports, depot):
+    df = pd.DataFrame(reports)
+
+    if df.empty:
+        return df
+
+    df["severity_num"] = (
+        df.get("severity", "Medium")
+        .map(SEVERITY)
+        .fillna(2)
+    )
+
+    df["quantity_num"] = (
+        df.get("quantity", "Medium")
+        .map(QUANTITY)
+        .fillna(2)
+    )
+
+    df["density_num"] = (
+        df.get("density", "Medium")
+        .map(DENSITY)
+        .fillna(2)
+    )
+
+    df["hazard_num"] = (
+        df.get("hazard", "None")
+        .map(HAZARD)
+        .fillna(0)
+    )
+
+    df["report_count"] = pd.to_numeric(
+        df.get("report_count", 1),
+        errors="coerce"
+    ).fillna(1)
+
+    df["age_hours"] = pd.to_numeric(
+        df.get("age_hours", 0),
+        errors="coerce"
+    ).fillna(0)
+
+    df["volume_kg"] = pd.to_numeric(
+        df.get("volume_kg", 10),
+        errors="coerce"
+    ).fillna(10)
+
+    df["toxicity"] = pd.to_numeric(
+        df.get("toxicity", 0),
+        errors="coerce"
+    ).fillna(0)
+
+    df["priority_score"] = pd.to_numeric(
+        df.get("priority_score", 0.5),
+        errors="coerce"
+    ).fillna(0.5)
+
+    df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
+    df["lng"] = pd.to_numeric(df["lng"], errors="coerce")
+
+    df = df.dropna(subset=["lat", "lng"]).copy()
+
+    df["distance_km"] = df.apply(
+        lambda row: haversine_distance_km(
+            depot,
+            [row["lat"], row["lng"]]
+        ),
+        axis=1,
+    )
+
+    return df
+
+
+def generate_ml_route(
+    reports,
+    depot,
+    vehicle_capacity_kg=100
+):
+    df = prepare_route_features(reports, depot)
+
+    if df.empty:
+        return {
+            "route": [],
+            "total_distance_km": 0,
+            "collected_kg": 0,
+            "nodes_collected": 0,
+            "capacity_used_kg": 0,
+            "remaining_capacity_kg": vehicle_capacity_kg,
+        }
+
+    # Predict utility for every collection point
+    df["ml_utility"] = np.clip(
+        route_model.predict(df[ROUTE_FEATURES]),
+        0,
+        1,
+    )
+
+    current_point = np.array(depot, dtype=float)
+    remaining_capacity = float(vehicle_capacity_kg)
+
+    remaining = df.copy()
+    selected = []
+
+    total_distance = 0.0
+    collected_kg = 0.0
+
+    # Greedy capacity-aware route construction
+    while not remaining.empty:
+
+        candidates = []
+
+        for idx, row in remaining.iterrows():
+
+            waste = float(row["volume_kg"])
+
+            if waste > remaining_capacity:
+                continue
+
+            point = np.array(
+                [row["lat"], row["lng"]],
+                dtype=float
+            )
+
+            distance = haversine_distance_km(
+                current_point,
+                point
+            )
+
+            travel_efficiency = 1 / (1 + distance)
+
+            route_score = (
+                0.75 * float(row["ml_utility"])
+                + 0.25 * travel_efficiency
+            )
+
+            candidates.append({
+                "index": idx,
+                "distance": distance,
+                "route_score": route_score,
+            })
+
+        if not candidates:
+            break
+
+        best = max(
+            candidates,
+            key=lambda x: x["route_score"]
+        )
+
+        idx = best["index"]
+        distance = best["distance"]
+
+        row = remaining.loc[idx]
+
+        selected.append(row)
+
+        total_distance += distance
+
+        collected_kg += float(row["volume_kg"])
+
+        remaining_capacity -= float(row["volume_kg"])
+
+        current_point = np.array(
+            [row["lat"], row["lng"]],
+            dtype=float
+        )
+
+        remaining = remaining.drop(index=idx)
+
+    # Return to depot
+    if selected:
+        return_distance = haversine_distance_km(
+            current_point,
+            depot
+        )
+
+        total_distance += return_distance
+    else:
+        return_distance = 0.0
+
+    route = []
+
+    for sequence, row in enumerate(selected, start=1):
+
+        route.append({
+            "sequence": sequence,
+            "reportId": str(row.get("id", "")),
+            "latitude": float(row["lat"]),
+            "longitude": float(row["lng"]),
+            "wasteKg": round(float(row["volume_kg"]), 2),
+            "priorityScore": round(
+                float(row["priority_score"]),
+                4
+            ),
+            "mlUtility": round(
+                float(row["ml_utility"]),
+                4
+            ),
+            "severity": str(row.get("severity", "Medium")),
+            "quantity": str(row.get("quantity", "Medium")),
+            "density": str(row.get("density", "Medium")),
+            "hazard": str(row.get("hazard", "None")),
+        })
+
+    return {
+        "route": route,
+        "total_distance_km": round(total_distance, 3),
+        "return_distance_km": round(return_distance, 3),
+        "collected_kg": round(collected_kg, 3),
+        "nodes_collected": len(route),
+        "capacity_used_kg": round(collected_kg, 3),
+        "remaining_capacity_kg": round(
+            remaining_capacity,
+            3
+        ),
+    }
 # ============================================================
 # OUTDOOR MODEL
 # ============================================================
@@ -537,3 +825,47 @@ async def predict_outdoor(
             status_code=500,
             detail=f"Outdoor prediction failed: {exc}"
         ) from exc
+
+@app.post("/predict-route")
+async def predict_route(payload: dict):
+    try:
+        reports = payload.get("reports", [])
+
+        depot = payload.get(
+            "depot",
+            [28.6139, 77.2090]
+        )
+
+        vehicle_capacity_kg = float(
+            payload.get("vehicleCapacityKg", 100)
+        )
+
+        if not reports:
+            return {
+                "success": True,
+                "message": "No reports available for routing.",
+                "route": [],
+                "total_distance_km": 0,
+                "collected_kg": 0,
+                "nodes_collected": 0,
+            }
+
+        result = generate_ml_route(
+            reports=reports,
+            depot=depot,
+            vehicle_capacity_kg=vehicle_capacity_kg,
+        )
+
+        return {
+            "success": True,
+            "method": "EcoTrek-Learned",
+            **result,
+        }
+
+    except Exception as e:
+        print("❌ Route optimization error:", str(e))
+
+        return {
+            "success": False,
+            "message": str(e),
+        }    

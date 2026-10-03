@@ -45,6 +45,12 @@ const reportSchema = new mongoose.Schema({
   hazard: { type: String, enum: ['None', 'Possible', 'Confirmed'], default: 'None' },
   severity: { type: String, enum: ['Low', 'Medium', 'High', 'Critical'], default: 'Medium' },
   priority: { type: String, enum: ['Low', 'Medium', 'High', 'Critical'], default: 'Low' },
+  priorityScore: {
+  type: Number,
+  default: 0,
+  min: 0,
+  max: 1
+},
   location: {
     type: { type: String, enum: ['Point'], default: 'Point' },
     coordinates: { type: [Number] } // [longitude, latitude]
