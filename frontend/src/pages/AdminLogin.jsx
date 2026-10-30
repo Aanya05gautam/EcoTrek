@@ -19,9 +19,9 @@ export default function AdminLogin() {
     setLoading(true);
     try {
       if (mode === 'setup') {
-        await adminRegister(form.name, form.email, form.password, form.setupKey);
+        await adminRegister(form.name.trim(), form.email.trim().toLowerCase(), form.password, form.setupKey);
       } else {
-        await adminLogin(form.email, form.password);
+        await adminLogin(form.email.trim().toLowerCase(), form.password);
       }
       navigate('/admin');
     } catch (requestError) {
@@ -45,11 +45,11 @@ export default function AdminLogin() {
         
         <p className="text-emerald-600 font-extrabold text-xs uppercase tracking-[0.2em]">Municipal Authority Node</p>
         <h1 className="text-3xl font-extrabold text-slate-900 mt-2">
-          {mode === 'setup' ? 'Setup First Admin' : 'Admin Portal Login'}
+          {mode === 'setup' ? 'Register Admin Account' : 'Admin Portal Login'}
         </h1>
         <p className="text-slate-600 font-medium text-sm mt-2 leading-relaxed">
           {mode === 'setup' 
-            ? 'Initialize the primary municipal administrator account with your system setup key.' 
+            ? 'Register one of the two authorized EcoTrek administrator accounts using the server setup key.' 
             : 'Access hotspot analysis, spatial accumulation maps, and optimized pickup route dispatch.'}
         </p>
 
@@ -72,7 +72,7 @@ export default function AdminLogin() {
                 value={form.name} 
                 onChange={e => setForm({ ...form, name: e.target.value })} 
                 className="mt-2 w-full border border-slate-200 rounded-xl px-4 py-3 font-semibold text-slate-900 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition" 
-                placeholder="e.g. City Waste Officer" 
+                placeholder="e.g. EcoTrek Administrator" 
               />
             </label>
           )}
@@ -154,7 +154,7 @@ export default function AdminLogin() {
           onClick={() => { setMode(mode === 'login' ? 'setup' : 'login'); setError(''); }} 
           className="w-full mt-5 text-emerald-700 font-extrabold text-sm hover:text-emerald-900 transition text-center"
         >
-          {mode === 'login' ? 'First-time setup? Create primary admin' : 'Already registered? Sign in to portal'}
+          {mode === 'login' ? 'Register an authorized admin account' : 'Already registered? Sign in to portal'}
         </button>
 
         {/* Features Summary / Footer Note */}

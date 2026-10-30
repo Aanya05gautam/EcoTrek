@@ -6,6 +6,10 @@ import { useAuth } from "../context/AuthContext";
 
 import {
   Activity,
+  Send,
+  CheckCircle2,
+  X,
+  ClipboardList,
   MapPin,
   ShieldAlert,
   RefreshCw,
@@ -15,6 +19,14 @@ import {
   Clock,
   Layers,
 } from "lucide-react";
+
+// Demo-only drivers for testing route assignment before real driver accounts exist.
+const DUMMY_DRIVERS = [
+  { id: "demo-driver-001", name: "Rajesh Kumar", phone: "+91 98765 43210", vehicle: "Truck 01", capacity: "2 tonnes" },
+  { id: "demo-driver-002", name: "Amit Sharma", phone: "+91 98765 12340", vehicle: "Truck 02", capacity: "1.5 tonnes" },
+  { id: "demo-driver-003", name: "Rahul Verma", phone: "+91 98765 67890", vehicle: "Mini Truck 03", capacity: "1 tonne" },
+  { id: "demo-driver-004", name: "Suresh Yadav", phone: "+91 98765 24680", vehicle: "Truck 04", capacity: "2.5 tonnes" },
+];
 
 export default function Admin() {
   const { user } = useAuth();
@@ -26,8 +38,28 @@ export default function Admin() {
 
   // ML ROUTE
   const [routeData, setRouteData] = useState(null);
+  const [activeRouteAssigned, setActiveRouteAssigned] = useState(false);
   const [routeLoading, setRouteLoading] = useState(false);
   const [routeError, setRouteError] = useState("");
+
+  // ROUTE ASSIGNMENT
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [selectedDriver, setSelectedDriver] = useState("");
+  const [vehicle, setVehicle] = useState("");
+  const [collectionDate, setCollectionDate] = useState("");
+  const [instructions, setInstructions] = useState("");
+  const [assignmentLoading, setAssignmentLoading] = useState(false);
+  const [assignmentError, setAssignmentError] = useState("");
+  const [successAssignment, setSuccessAssignment] = useState(null);
+  const [selectedAssignment, setSelectedAssignment] = useState(null);
+  // Demo assignments are stored in this browser only; no driver records or backend API are needed.
+  const [assignments, setAssignments] = useState(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem("ecotrek-demo-assignments") || "[]");
+    } catch {
+      return [];
+    }
+  });
 
   const [reportFilter, setReportFilter] = useState("All");
   const [typeFilter, setTypeFilter] = useState("All");
@@ -90,6 +122,26 @@ export default function Admin() {
       quantity: hotspot?.quantity || "Medium",
     };
   };
+
+
+  // Resolve report IDs from the different shapes returned by the ML API.
+  const getStopReportId = (stop) => {
+    const candidates = [
+      stop?.reportId,
+      stop?.wasteReportId,
+      stop?.report?._id,
+      stop?.report?.id,
+      stop?.wasteReport?._id,
+      stop?.wasteReport?.id,
+      stop?._id,
+      stop?.id,
+    ];
+    const value = candidates.find((item) => item !== undefined && item !== null && String(item).trim() !== "");
+    return value ? String(value).trim() : "";
+  };
+
+  const getAssignmentStops = (assignment) =>
+    assignment?.route?.stops || assignment?.optimizedRoute?.stops || assignment?.stops || [];
 
   // ============================================================
   // LOAD EVERYTHING
@@ -154,6 +206,7 @@ export default function Admin() {
           "Some dashboard data could not be loaded. Available sections are still shown.",
         );
       }
+
     } catch (err) {
       console.error("Admin dashboard loading failed:", err);
 
@@ -172,6 +225,7 @@ export default function Admin() {
     try {
       setRouteLoading(true);
       setRouteError("");
+      setActiveRouteAssigned(false);
 
       const depotLat = 28.6139;
       const depotLng = 77.209;
@@ -180,10 +234,94 @@ export default function Admin() {
         `/reports/route?lat=${depotLat}&lng=${depotLng}&capacity=100&radiusKm=5`,
       );
 
-      setRouteData(data);
+      // Demo mode: exclude every report already included in a local assignment.
+      // Match IDs from common API response shapes (reportId, nested report._id, _id, etc.).
+      const assignedReportIds = new Set(
+        assignments
+          .flatMap((assignment) => getAssignmentStops(assignment))
+          .map(getStopReportId)
+          .filter(Boolean),
+      );
+
+      const originalStops = Array.isArray(data?.stops) ? data.stops : [];
+      const availableStops = originalStops.filter((stop) => {
+        const reportId = getStopReportId(stop);
+        // Keep stops without an ID rather than accidentally hiding valid route data.
+        return !reportId || !assignedReportIds.has(reportId);
+      });
+
+      let stopsToShow = availableStops;
+      let usingRemainingReportsFallback = false;
+
+      // If the ML endpoint repeats only already-assigned stops, check the full
+      // reports list for remaining unresolved reports. This makes those reports
+      // visible instead of incorrectly claiming that everything is assigned.
+      if (stopsToShow.length === 0 && reports.length > 0) {
+        const remainingReports = reports.filter((report) => {
+          const reportId = String(report?._id || report?.id || report?.reportId || "");
+          const status = String(report?.status || "Pending").toLowerCase();
+          return (
+            reportId &&
+            !assignedReportIds.has(reportId) &&
+            !["resolved", "completed", "collected", "closed"].includes(status)
+          );
+        });
+
+        if (remainingReports.length > 0) {
+          stopsToShow = remainingReports.map((report, index) => ({
+            reportId: String(report._id || report.id || report.reportId),
+            locationName:
+              report.locationName ||
+              report.location?.address ||
+              report.address ||
+              report.title ||
+              `Waste location ${index + 1}`,
+            center: {
+              lat: report.lat ?? report.location?.lat ?? report.coordinates?.lat,
+              lng: report.lng ?? report.location?.lng ?? report.coordinates?.lng,
+            },
+            wasteType: report.aiCategory || report.wasteType || report.category || "Mixed",
+            totalQuantity: Number(report.quantityValue ?? report.totalQuantity ?? 0),
+            priorityScore: Number(report.priorityScore ?? 0),
+            mlUtility: Number(report.mlUtility ?? 0),
+            severity: report.severity || "Medium",
+            quantity: report.quantity || "Unknown",
+            sequence: index + 1,
+            sourceReport: report,
+          }));
+          usingRemainingReportsFallback = true;
+        }
+      }
+
+      if (stopsToShow.length === 0) {
+        setRouteData(null);
+        setRouteError(
+          originalStops.length > 0
+            ? "The ML route endpoint returned only reports that are already assigned, and no additional unresolved reports were available in the loaded reports list. Refresh reports or check the report statuses."
+            : "The ML model did not return any collection stops.",
+        );
+        return;
+      }
+
+      const recalculatedCapacity = stopsToShow.reduce(
+        (sum, stop) => sum + (Number(stop.totalQuantity) || 0),
+        0,
+      );
+
+      setRouteData({
+        ...data,
+        stops: stopsToShow.map((stop, index) => ({
+          ...stop,
+          sequence: index + 1,
+        })),
+        capacityUsed: usingRemainingReportsFallback
+          ? recalculatedCapacity
+          : (data?.capacityUsed ?? recalculatedCapacity),
+        // This fallback is a visibility safeguard, not an ML-optimized route.
+        isRemainingReportsFallback: usingRemainingReportsFallback,
+      });
     } catch (err) {
       console.error("ML route generation failed:", err);
-
       setRouteError(err?.message || "Unable to generate optimized route.");
     } finally {
       setRouteLoading(false);
@@ -191,8 +329,62 @@ export default function Admin() {
   };
 
   // ============================================================
+  // CREATE A LOCAL DEMO ROUTE ASSIGNMENT (NO BACKEND REQUIRED)
+  // ============================================================
+
+  const sendRouteToDriver = (event) => {
+    event.preventDefault();
+
+    if (!routeData || !selectedDriver || !vehicle || !collectionDate) {
+      setAssignmentError("Please select a driver, vehicle and collection date.");
+      return;
+    }
+
+    const demoDriver = DUMMY_DRIVERS.find((item) => item.id === selectedDriver);
+    const registeredDriver = users.find(
+      (item) => (item._id || item.id) === selectedDriver,
+    );
+    const driverName = demoDriver?.name || registeredDriver?.name || registeredDriver?.email || "Selected driver";
+
+    const assignment = {
+      _id: `ECO-${Date.now()}`,
+      reportId: `ECO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`,
+      driverId: selectedDriver,
+      driverName,
+      vehicle,
+      collectionDate,
+      instructions: instructions.trim(),
+      route: routeData,
+      status: "Assigned",
+      createdAt: new Date().toISOString(),
+      demo: true,
+    };
+
+    setAssignmentLoading(true);
+    setAssignmentError("");
+    setAssignments((current) => [assignment, ...current]);
+    setActiveRouteAssigned(true);
+    setSuccessAssignment(assignment);
+    setShowAssignModal(false);
+    setSelectedDriver("");
+    setVehicle("");
+    setCollectionDate("");
+    setInstructions("");
+    setAssignmentLoading(false);
+  };
+
+  // ============================================================
   // AUTO REFRESH
   // ============================================================
+
+  // Keep demo assignment history after a page refresh in this browser only.
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("ecotrek-demo-assignments", JSON.stringify(assignments));
+    } catch (storageError) {
+      console.warn("Could not save demo assignments in this browser:", storageError);
+    }
+  }, [assignments]);
 
   useEffect(() => {
     if (user?.role !== "Admin") {
@@ -1077,6 +1269,13 @@ export default function Admin() {
               </div>
             </div>
 
+            {activeRouteAssigned && (
+              <div className="mb-5 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">
+                <CheckCircle2 size={18} />
+                This route has been assigned. Generate a new ML route to view remaining unassigned stops.
+              </div>
+            )}
+
             {/* MODEL INFORMATION */}
 
             <div className="mb-6 flex flex-wrap gap-3">
@@ -1223,6 +1422,353 @@ export default function Admin() {
 
 
       {/* ======================================================
+          DRIVER ASSIGNMENT & COLLECTION REPORTS
+      ====================================================== */}
+
+      {routeData && !routeLoading && (
+        <div className="bg-white/90 rounded-3xl p-6 border border-emerald-100 shadow-sm mb-8">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Truck size={21} className="text-emerald-600" />
+                <h2 className="text-xl font-extrabold text-emerald-950">
+                  Assign Collection Route
+                </h2>
+              </div>
+              <p className="text-sm text-slate-500 mt-1">
+                Send this ML-generated route to a selected driver and save an assignment report for the admin.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              {activeRouteAssigned && (
+                <span className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-extrabold text-emerald-700">
+                  <CheckCircle2 size={17} />
+                  Route Assigned
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setAssignmentError("");
+                  setShowAssignModal(true);
+                }}
+                disabled={!routeData.stops?.length || activeRouteAssigned}
+                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold transition disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Send size={17} />
+                {activeRouteAssigned ? "Already Assigned" : "Send Route to Driver"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white/90 rounded-3xl p-6 border border-emerald-100 shadow-sm mb-8">
+        <div className="flex items-center gap-2 mb-5">
+          <ClipboardList size={21} className="text-emerald-600" />
+          <h2 className="text-xl font-extrabold text-emerald-950">
+            Collection Assignment Reports
+          </h2>
+        </div>
+
+        {assignments.length === 0 ? (
+          <p className="text-sm text-slate-500 py-6 text-center">
+            No route assignments have been sent yet.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-emerald-50 text-xs uppercase text-emerald-800">
+                  <th className="p-3">Assignment ID</th>
+                  <th className="p-3">Driver</th>
+                  <th className="p-3">Vehicle</th>
+                  <th className="p-3">Stops</th>
+                  <th className="p-3">Collection Date</th>
+                  <th className="p-3">Status</th>
+                  <th className="p-3">Details</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-emerald-50">
+                {assignments.map((assignment, index) => (
+                  <tr
+                    key={assignment._id || assignment.id || index}
+                    onClick={() => setSelectedAssignment(assignment)}
+                    className="cursor-pointer transition hover:bg-emerald-50"
+                    title="Click to open this collection assignment"
+                  >
+                    <td className="p-3 font-bold text-emerald-900 underline decoration-dotted underline-offset-4">
+                      {assignment.reportId || assignment._id || `ECO-${index + 1}`}
+                    </td>
+                    <td className="p-3 text-sm">{assignment.driverName || assignment.driver?.name || "Driver"}</td>
+                    <td className="p-3 text-sm">{assignment.vehicle || "—"}</td>
+                    <td className="p-3 text-sm">{assignment.route?.stops?.length ?? assignment.stops?.length ?? 0}</td>
+                    <td className="p-3 text-sm">
+                      {assignment.collectionDate
+                        ? new Date(assignment.collectionDate).toLocaleDateString()
+                        : "—"}
+                    </td>
+                    <td className="p-3">
+                      <span className="rounded-lg bg-emerald-50 border border-emerald-200 px-2.5 py-1 text-xs font-extrabold text-emerald-700">
+                        {assignment.status || "Assigned"}
+                      </span>
+                    </td>
+                    <td className="p-3">
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setSelectedAssignment(assignment);
+                        }}
+                        className="rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100"
+                      >
+                        Open route
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {showAssignModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4 mb-5">
+              <div>
+                <h2 className="text-2xl font-extrabold text-slate-900">Assign Route to Driver</h2>
+                <p className="text-sm text-slate-500 mt-1">Confirm the assignment details before sending.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAssignModal(false)}
+                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                aria-label="Close assignment dialog"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="rounded-2xl bg-emerald-50 p-4 mb-5 text-sm text-emerald-900">
+              <p><strong>Route stops:</strong> {routeData?.stops?.length || 0}</p>
+              <p><strong>Total distance:</strong> {routeData?.totalDistanceKm ?? "—"} km</p>
+              <p><strong>Capacity used:</strong> {routeData?.capacityUsed ?? "—"} kg</p>
+            </div>
+
+            <form onSubmit={sendRouteToDriver} className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Select Driver</label>
+                <select
+                  value={selectedDriver}
+                  onChange={(event) => {
+                    const driverId = event.target.value;
+                    setSelectedDriver(driverId);
+                    const demoDriver = DUMMY_DRIVERS.find((item) => item.id === driverId);
+                    if (demoDriver) setVehicle(demoDriver.vehicle);
+                  }}
+                  required
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3"
+                >
+                  <option value="">Choose a driver</option>
+                  <optgroup label="Demo drivers (for testing)">
+                    {DUMMY_DRIVERS.map((driver) => (
+                      <option key={driver.id} value={driver.id}>
+                        {driver.name} — {driver.vehicle}
+                      </option>
+                    ))}
+                  </optgroup>
+                  {users.filter((account) => account.role === "Driver").length > 0 && (
+                    <optgroup label="Registered driver accounts">
+                      {users
+                        .filter((account) => account.role === "Driver")
+                        .map((driver) => (
+                          <option key={driver._id || driver.id} value={driver._id || driver.id}>
+                            {driver.name || driver.email}
+                          </option>
+                        ))}
+                    </optgroup>
+                  )}
+                </select>
+                <p className="text-xs text-amber-700 mt-1">
+                  Demo mode: assignments are recorded in this browser only. No driver account or notification is required.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Vehicle</label>
+                <input
+                  value={vehicle}
+                  onChange={(event) => setVehicle(event.target.value)}
+                  required
+                  placeholder="e.g. Truck 01"
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Collection Date</label>
+                <input
+                  type="date"
+                  value={collectionDate}
+                  min={new Date().toISOString().slice(0, 10)}
+                  onChange={(event) => setCollectionDate(event.target.value)}
+                  required
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Instructions (optional)</label>
+                <textarea
+                  value={instructions}
+                  onChange={(event) => setInstructions(event.target.value)}
+                  rows={3}
+                  placeholder="Collection instructions for the driver..."
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3"
+                />
+              </div>
+
+              {assignmentError && (
+                <p className="rounded-xl bg-red-50 border border-red-200 p-3 text-sm font-semibold text-red-700">
+                  {assignmentError}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={assignmentLoading || !selectedDriver}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 font-extrabold text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                <Send size={17} />
+                {assignmentLoading ? "Sending Route..." : "Confirm & Send Route"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {selectedAssignment && (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-extrabold uppercase tracking-wider text-emerald-600">Collection assignment</p>
+                <h2 className="mt-1 text-2xl font-extrabold text-slate-900">
+                  {selectedAssignment.reportId || selectedAssignment._id}
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Assigned to {selectedAssignment.driverName || "Driver"} · {selectedAssignment.vehicle || "Vehicle not specified"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedAssignment(null)}
+                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                aria-label="Close assignment details"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+              <div className="rounded-xl bg-emerald-50 p-3">
+                <p className="text-xs text-emerald-700">Stops</p>
+                <p className="text-xl font-extrabold text-emerald-950">{getAssignmentStops(selectedAssignment).length}</p>
+              </div>
+              <div className="rounded-xl bg-blue-50 p-3">
+                <p className="text-xs text-blue-700">Distance</p>
+                <p className="text-xl font-extrabold text-blue-950">{selectedAssignment.route?.totalDistanceKm ?? "—"} km</p>
+              </div>
+              <div className="rounded-xl bg-purple-50 p-3">
+                <p className="text-xs text-purple-700">Capacity</p>
+                <p className="text-xl font-extrabold text-purple-950">{selectedAssignment.route?.capacityUsed ?? "—"} kg</p>
+              </div>
+              <div className="rounded-xl bg-amber-50 p-3">
+                <p className="text-xs text-amber-700">Status</p>
+                <p className="text-xl font-extrabold text-amber-950">{selectedAssignment.status || "Assigned"}</p>
+              </div>
+            </div>
+
+            <div className="mb-5 rounded-xl border border-slate-200 p-4 text-sm">
+              <p><strong>Collection date:</strong> {selectedAssignment.collectionDate ? new Date(selectedAssignment.collectionDate).toLocaleDateString() : "—"}</p>
+              <p className="mt-1"><strong>Assigned at:</strong> {selectedAssignment.createdAt ? new Date(selectedAssignment.createdAt).toLocaleString() : "—"}</p>
+              {selectedAssignment.instructions && <p className="mt-1"><strong>Instructions:</strong> {selectedAssignment.instructions}</p>}
+            </div>
+
+            <h3 className="mb-3 font-extrabold text-slate-900">Assigned collection route</h3>
+            {getAssignmentStops(selectedAssignment).length > 0 ? (
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-emerald-50 text-xs uppercase text-emerald-800">
+                    <tr>
+                      <th className="p-3">Stop</th>
+                      <th className="p-3">Location</th>
+                      <th className="p-3">Report ID</th>
+                      <th className="p-3">Waste</th>
+                      <th className="p-3">Severity</th>
+                      <th className="p-3">Quantity</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {getAssignmentStops(selectedAssignment).map((stop, stopIndex) => (
+                      <tr key={`${getStopReportId(stop) || "stop"}-${stopIndex}`}>
+                        <td className="p-3 font-bold">{stop.sequence || stopIndex + 1}</td>
+                        <td className="p-3">{stop.locationName || stop.address || "Location unavailable"}</td>
+                        <td className="p-3 font-mono text-xs">{getStopReportId(stop) || "—"}</td>
+                        <td className="p-3">{stop.wasteType || stop.aiCategory || "—"}</td>
+                        <td className="p-3">{formatCondition(stop.severity)}</td>
+                        <td className="p-3">{stop.totalQuantity ?? stop.quantity ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="rounded-xl bg-slate-50 p-5 text-sm text-slate-500">No stop details were saved with this assignment.</p>
+            )}
+
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedAssignment(null)}
+                className="rounded-xl bg-emerald-600 px-5 py-3 font-bold text-white hover:bg-emerald-700"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {successAssignment && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="w-full max-w-md rounded-3xl bg-white p-8 text-center shadow-2xl">
+            <CheckCircle2 size={58} className="mx-auto text-emerald-600 mb-4" />
+            <h2 className="text-2xl font-extrabold text-emerald-800">Report Sent Successfully!</h2>
+            <p className="text-slate-600 mt-2">
+              The optimized route has been assigned in this EcoTrek demo. No external driver notification was sent.
+            </p>
+            <div className="my-5 rounded-2xl bg-emerald-50 p-4 text-left text-sm space-y-2">
+              <p><strong>Assignment:</strong> {successAssignment.reportId || successAssignment._id}</p>
+              <p><strong>Driver:</strong> {successAssignment.driverName}</p>
+              <p><strong>Vehicle:</strong> {successAssignment.vehicle}</p>
+              <p><strong>Status:</strong> {successAssignment.status}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSuccessAssignment(null)}
+              className="w-full rounded-xl bg-emerald-600 px-5 py-3 font-extrabold text-white hover:bg-emerald-700"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================
           USERS
       ====================================================== */}
 
@@ -1283,6 +1829,8 @@ export default function Admin() {
                         onChange={(event) => updateRole(id, event.target.value)}
                       >
                         <option value="Citizen">Citizen</option>
+
+                        <option value="Driver">Driver</option>
 
                         <option value="Admin">Admin</option>
                       </select>

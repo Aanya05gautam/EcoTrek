@@ -11,7 +11,8 @@ const token = (u) =>
     { expiresIn: "7d" },
   );
 export async function register(req, res) {
-  const { name, email, password } = req.body;
+  const { name, email: rawEmail, password } = req.body;
+  const email = String(rawEmail || '').trim().toLowerCase();
   if (!name || !email || !password)
     return res
       .status(400)
@@ -56,7 +57,8 @@ export async function register(req, res) {
     });
 }
 export async function login(req, res) {
-  const { email, password } = req.body;
+  const { email: rawEmail, password } = req.body;
+  const email = String(rawEmail || '').trim().toLowerCase();
   let u = useMongo()
     ? await User.findOne({ email })
     : memoryStore.users.find((x) => x.email === email);
@@ -75,7 +77,8 @@ export async function login(req, res) {
 }
 
 export async function adminLogin(req, res) {
-  const { email, password } = req.body;
+  const { email: rawEmail, password } = req.body;
+  const email = String(rawEmail || '').trim().toLowerCase();
   let u = useMongo()
     ? await User.findOne({ email })
     : memoryStore.users.find((x) => x.email === email);
@@ -96,7 +99,8 @@ export async function adminLogin(req, res) {
 }
 
 export async function adminRegister(req, res) {
-  const { name, email, password, setupKey } = req.body;
+  const { name, email: rawEmail, password, setupKey } = req.body;
+  const email = String(rawEmail || '').trim().toLowerCase();
   if (!name || !email || !password || !setupKey)
     return res
       .status(400)
@@ -106,13 +110,10 @@ export async function adminRegister(req, res) {
   const adminCount = useMongo()
     ? await User.countDocuments({ role: "Admin" })
     : memoryStore.users.filter((user) => user.role === "Admin").length;
-  if (adminCount > 0)
-    return res
-      .status(409)
-      .json({
-        message:
-          "Initial administrator already exists. Ask an administrator to promote this account.",
-      });
+  if (adminCount >= 2)
+    return res.status(409).json({
+      message: "EcoTrek already has its two authorized administrator accounts.",
+    });
   if (useMongo()) {
     if (await User.findOne({ email }))
       return res.status(409).json({ message: "Email already registered" });
