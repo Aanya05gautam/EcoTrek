@@ -1,4 +1,6 @@
-const ML_API_URL = "http://127.0.0.1:8080";
+const ML_API_URL = (
+  import.meta.env.VITE_ML_API_URL || "http://127.0.0.1:8080"
+).replace(/\/$/, "");
 
 export async function predictWaste(imageFile) {
   const formData = new FormData();
